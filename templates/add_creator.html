@@ -1,0 +1,232 @@
+{% extends "base.html" %}
+
+{% block title %}Add Creator - YouTube Shorts{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-8 col-xl-6">
+        <div class="mb-4">
+            <a href="{{ url_for('dashboard') }}" class="text-decoration-none">
+                <i class="bi bi-arrow-left me-1"></i>Back to Dashboard
+            </a>
+        </div>
+
+        <div class="card">
+            <div class="card-header">
+                <h4 class="mb-0">
+                    <i class="bi bi-person-plus-fill me-2"></i>Add New Creator
+                </h4>
+            </div>
+            <div class="card-body">
+                <form id="addCreatorForm" onsubmit="return startOAuth(event)">
+                    <!-- Creator Name -->
+                    <div class="mb-4">
+                        <label class="form-label fw-bold">Creator Name</label>
+                        <input type="text" class="form-control" id="creatorName" name="name" required
+                               placeholder="e.g., MyCookingChannel">
+                        <div class="form-text">A unique name to identify this creator in the dashboard</div>
+                    </div>
+
+                    <!-- Google Sheet ID -->
+                    <div class="mb-4">
+                        <label class="form-label fw-bold">Google Sheet ID</label>
+                        <input type="text" class="form-control" id="sheetId" name="sheet_id" required
+                               placeholder="e.g., 1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms">
+                        <div class="form-text">
+                            The ID from your Google Sheet URL:
+                            <code>docs.google.com/spreadsheets/d/<strong>SHEET_ID</strong>/edit</code>
+                        </div>
+                    </div>
+
+                    <!-- Posts Per Day -->
+                    <div class="mb-4">
+                        <label class="form-label fw-bold">Posts Per Day</label>
+                        <select class="form-select" id="postsPerDay" name="posts_per_day">
+                            {% for i in range(1, 11) %}
+                            <option value="{{ i }}" {% if i == default_posts_per_day %}selected{% endif %}>
+                                {{ i }} {{ 'post' if i == 1 else 'posts' }} per day
+                            </option>
+                            {% endfor %}
+                        </select>
+                        <div class="form-text">Maximum uploads per day for this creator (uploads are spaced 2 hours apart)</div>
+                    </div>
+
+                    <!-- Requirements Info -->
+                    <div class="alert alert-info mb-4">
+                        <h6 class="alert-heading">
+                            <i class="bi bi-info-circle me-1"></i>Before you continue:
+                        </h6>
+                        <ul class="mb-0 ps-3">
+                            <li>Your Google Sheet must be accessible by the account you'll authorize</li>
+                            <li>The Sheet should have columns: Post ID, Video Link, Caption, Duration, etc.</li>
+                            <li>The YouTube account must have a channel</li>
+                            <li>You'll be redirected to Google to authorize access</li>
+                        </ul>
+                    </div>
+
+                    <!-- Submit Button -->
+                    <div class="d-grid">
+                        <button type="submit" class="btn btn-primary btn-lg" id="submitBtn">
+                            <i class="bi bi-google me-2"></i>Connect YouTube Account
+                        </button>
+                    </div>
+                </form>
+
+                <!-- Error Display -->
+                <div id="errorAlert" class="alert alert-danger mt-4" style="display: none;">
+                    <i class="bi bi-exclamation-triangle me-2"></i>
+                    <span id="errorMessage"></span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Help Card -->
+        <div class="card mt-4">
+            <div class="card-header">
+                <h6 class="mb-0">
+                    <i class="bi bi-question-circle me-2"></i>Google Sheet Format
+                </h6>
+            </div>
+            <div class="card-body">
+                <p class="small text-muted mb-3">Your Google Sheet should have these columns:</p>
+                <div class="table-responsive">
+                    <table class="table table-sm small">
+                        <thead>
+                            <tr>
+                                <th>Column</th>
+                                <th>Content</th>
+                                <th>Required</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><code>A</code></td>
+                                <td>Post ID (unique identifier)</td>
+                                <td><i class="bi bi-check text-success"></i></td>
+                            </tr>
+                            <tr>
+                                <td><code>B</code></td>
+                                <td>Google Drive Video Link</td>
+                                <td><i class="bi bi-check text-success"></i></td>
+                            </tr>
+                            <tr>
+                                <td><code>C-E</code></td>
+                                <td>Views, Likes, Comments</td>
+                                <td></td>
+                            </tr>
+                            <tr>
+                                <td><code>F</code></td>
+                                <td>Caption/Description</td>
+                                <td><i class="bi bi-check text-success"></i></td>
+                            </tr>
+                            <tr>
+                                <td><code>G</code></td>
+                                <td>Post Date</td>
+                                <td></td>
+                            </tr>
+                            <tr>
+                                <td><code>H</code></td>
+                                <td>Video Duration (seconds)</td>
+                                <td><i class="bi bi-check text-success"></i></td>
+                            </tr>
+                            <tr>
+                                <td><code>I</code></td>
+                                <td>Thumbnail URL</td>
+                                <td></td>
+                            </tr>
+                            <tr>
+                                <td><code>J</code></td>
+                                <td>Original Post URL</td>
+                                <td></td>
+                            </tr>
+                            <tr>
+                                <td><code>K</code></td>
+                                <td>Posted to YT (TRUE/FALSE)</td>
+                                <td><i class="bi bi-check text-success"></i></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <p class="small text-muted mb-0">
+                    <i class="bi bi-info-circle me-1"></i>
+                    Columns L, M, N will be auto-added for tracking uploads
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    async function startOAuth(event) {
+        event.preventDefault();
+
+        const form = document.getElementById('addCreatorForm');
+        const submitBtn = document.getElementById('submitBtn');
+        const errorAlert = document.getElementById('errorAlert');
+        const errorMessage = document.getElementById('errorMessage');
+
+        // Get form data
+        const name = document.getElementById('creatorName').value.trim();
+        const sheetId = document.getElementById('sheetId').value.trim();
+        const postsPerDay = parseInt(document.getElementById('postsPerDay').value);
+
+        // Validate
+        if (!name || !sheetId) {
+            errorMessage.textContent = 'Please fill in all required fields';
+            errorAlert.style.display = 'block';
+            return false;
+        }
+
+        // Show loading state
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Starting authorization...';
+        errorAlert.style.display = 'none';
+
+        try {
+            const response = await fetch('/api/oauth/start', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    name: name,
+                    sheet_id: sheetId,
+                    posts_per_day: postsPerDay
+                })
+            });
+
+            const data = await response.json();
+
+            if (data.error) {
+                throw new Error(data.error);
+            }
+
+            if (data.authorization_url) {
+                // Redirect to Google OAuth
+                window.location.href = data.authorization_url;
+            } else {
+                throw new Error('No authorization URL returned');
+            }
+
+        } catch (error) {
+            errorMessage.textContent = error.message;
+            errorAlert.style.display = 'block';
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = '<i class="bi bi-google me-2"></i>Connect YouTube Account';
+        }
+
+        return false;
+    }
+
+    // Auto-extract Sheet ID from URL
+    document.getElementById('sheetId').addEventListener('paste', function(e) {
+        setTimeout(() => {
+            const value = this.value;
+            const match = value.match(/\/d\/([a-zA-Z0-9-_]+)/);
+            if (match) {
+                this.value = match[1];
+            }
+        }, 0);
+    });
+</script>
+{% endblock %}

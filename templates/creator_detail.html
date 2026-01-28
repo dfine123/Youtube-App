@@ -1,0 +1,521 @@
+{% extends "base.html" %}
+
+{% block title %}{{ creator.name }} - YouTube Shorts{% endblock %}
+
+{% block content %}
+<div class="mb-4">
+    <a href="{{ url_for('dashboard') }}" class="text-decoration-none">
+        <i class="bi bi-arrow-left me-1"></i>Back to Dashboard
+    </a>
+</div>
+
+<!-- Creator Header -->
+<div class="card mb-4">
+    <div class="card-body">
+        <div class="row align-items-center">
+            <div class="col-md-8">
+                <div class="d-flex align-items-center mb-2">
+                    <div class="status-indicator bg-{{ creator.status_color }} me-3" style="width: 16px; height: 16px;"></div>
+                    <h2 class="mb-0">{{ creator.name }}</h2>
+                    {% if not creator.active %}
+                    <span class="badge bg-secondary ms-2">Inactive</span>
+                    {% endif %}
+                </div>
+                <p class="text-muted mb-0">
+                    <i class="bi bi-youtube me-1"></i>
+                    Channel: <code>{{ creator.channel_id }}</code>
+                </p>
+            </div>
+            <div class="col-md-4 text-md-end mt-3 mt-md-0">
+                <button class="btn btn-primary me-2" onclick="uploadCreator({{ creator.id }})" {% if not creator.can_upload %}disabled{% endif %}>
+                    <i class="bi bi-cloud-upload me-1"></i>Upload Now
+                </button>
+                <div class="btn-group">
+                    <button type="button" class="btn btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown">
+                        <i class="bi bi-three-dots"></i>
+                    </button>
+                    <ul class="dropdown-menu dropdown-menu-end">
+                        <li><a class="dropdown-item" href="#" onclick="refreshStats()"><i class="bi bi-arrow-clockwise me-2"></i>Refresh Stats</a></li>
+                        <li><a class="dropdown-item" href="#" onclick="testConnection()"><i class="bi bi-plug me-2"></i>Test Connection</a></li>
+                        <li><a class="dropdown-item" href="#" onclick="reauthorize()"><i class="bi bi-key me-2"></i>Re-authenticate</a></li>
+                        <li><hr class="dropdown-divider"></li>
+                        <li><a class="dropdown-item text-danger" href="#" onclick="deleteCreator()"><i class="bi bi-trash me-2"></i>Delete Creator</a></li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Stats Row -->
+<div class="row g-3 mb-4">
+    <div class="col-sm-6 col-lg-3">
+        <div class="card stat-card h-100">
+            <div class="card-body text-center">
+                <h6 class="text-muted mb-2">Shorts Ready</h6>
+                <h2 class="mb-0">{{ creator.shorts_ready }}</h2>
+            </div>
+        </div>
+    </div>
+    <div class="col-sm-6 col-lg-3">
+        <div class="card stat-card h-100">
+            <div class="card-body text-center">
+                <h6 class="text-muted mb-2">Content Runway</h6>
+                <h2 class="mb-0">
+                    <span class="badge runway-badge bg-{{ creator.runway_color }}">
+                        {{ creator.runway_emoji }} {{ creator.days_runway }} days
+                    </span>
+                </h2>
+            </div>
+        </div>
+    </div>
+    <div class="col-sm-6 col-lg-3">
+        <div class="card stat-card h-100">
+            <div class="card-body text-center">
+                <h6 class="text-muted mb-2">Today's Progress</h6>
+                <h2 class="mb-0">{{ creator.uploads_today }}/{{ creator.posts_per_day }}</h2>
+                <div class="progress mt-2 progress-thin">
+                    <div class="progress-bar bg-success" style="width: {{ (creator.uploads_today / creator.posts_per_day * 100) if creator.posts_per_day > 0 else 0 }}%"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-sm-6 col-lg-3">
+        <div class="card stat-card h-100">
+            <div class="card-body text-center">
+                <h6 class="text-muted mb-2">Status</h6>
+                <h2 class="mb-0">
+                    {% if creator.can_upload %}
+                    <span class="badge bg-success">Ready</span>
+                    {% else %}
+                    <span class="badge bg-warning">{{ creator.upload_reason }}</span>
+                    {% endif %}
+                </h2>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <!-- Settings Column -->
+    <div class="col-lg-4 mb-4">
+        <div class="card h-100">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-gear me-2"></i>Settings</h5>
+            </div>
+            <div class="card-body">
+                <form id="settingsForm" onsubmit="return saveSettings(event)">
+                    <div class="mb-3">
+                        <label class="form-label small text-muted">Posts Per Day</label>
+                        <select class="form-select" id="postsPerDay" name="posts_per_day">
+                            {% for i in range(1, 11) %}
+                            <option value="{{ i }}" {% if i == creator.posts_per_day %}selected{% endif %}>
+                                {{ i }} {{ 'post' if i == 1 else 'posts' }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label small text-muted">Default Privacy</label>
+                        <select class="form-select" id="defaultPrivacy" name="default_privacy">
+                            <option value="public" {% if creator.default_privacy == 'public' %}selected{% endif %}>Public</option>
+                            <option value="unlisted" {% if creator.default_privacy == 'unlisted' %}selected{% endif %}>Unlisted</option>
+                            <option value="private" {% if creator.default_privacy == 'private' %}selected{% endif %}>Private</option>
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label small text-muted">Google Sheet ID</label>
+                        <input type="text" class="form-control font-monospace small" id="sheetId" name="sheet_id" value="{{ creator.sheet_id }}">
+                    </div>
+
+                    <div class="mb-3">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="activeToggle" {% if creator.active %}checked{% endif %}>
+                            <label class="form-check-label" for="activeToggle">Creator Active</label>
+                        </div>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary w-100" id="saveSettingsBtn">
+                        <i class="bi bi-check me-1"></i>Save Settings
+                    </button>
+                </form>
+
+                <hr>
+
+                <div class="small text-muted">
+                    <div class="mb-2"><strong>Created:</strong> {{ creator.created_at.strftime('%Y-%m-%d') if creator.created_at else 'Unknown' }}</div>
+                    <div class="mb-2"><strong>Last Upload:</strong> {{ creator.last_upload_str }}</div>
+                    <div><strong>Channel ID:</strong> <code class="small">{{ creator.channel_id }}</code></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Queue Preview Column -->
+    <div class="col-lg-8 mb-4">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="bi bi-collection-play me-2"></i>Upload Queue</h5>
+                <button class="btn btn-sm btn-outline-primary" onclick="refreshQueue()">
+                    <i class="bi bi-arrow-clockwise"></i>
+                </button>
+            </div>
+            <div class="card-body" id="queueContent">
+                {% if pending_videos %}
+                <div class="list-group list-group-flush">
+                    {% for video in pending_videos %}
+                    <div class="list-group-item d-flex align-items-center">
+                        {% if video.thumbnail_url %}
+                        <img src="{{ video.thumbnail_url }}" class="video-thumbnail me-3" alt="Thumbnail">
+                        {% else %}
+                        <div class="video-thumbnail me-3 bg-secondary d-flex align-items-center justify-content-center">
+                            <i class="bi bi-film"></i>
+                        </div>
+                        {% endif %}
+                        <div class="flex-grow-1">
+                            <div class="fw-bold small">{{ video.post_id }}</div>
+                            <div class="text-muted small text-truncate" style="max-width: 300px;">{{ video.caption }}</div>
+                        </div>
+                        <div class="text-end">
+                            <span class="badge {% if video.is_short %}bg-success{% else %}bg-warning{% endif %}">
+                                {{ video.duration }}
+                            </span>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <div class="text-center text-muted py-4">
+                    <i class="bi bi-inbox" style="font-size: 3rem;"></i>
+                    <p class="mt-2 mb-0">No pending videos in queue</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Upload History -->
+        <div class="card mt-4">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="bi bi-clock-history me-2"></i>Recent Uploads</h5>
+                <a href="{{ url_for('history_page', creator_id=creator.id) }}" class="btn btn-sm btn-outline-secondary">
+                    View All
+                </a>
+            </div>
+            <div class="card-body p-0">
+                {% if upload_logs %}
+                <div class="table-responsive">
+                    <table class="table table-sm mb-0">
+                        <thead>
+                            <tr>
+                                <th>Post ID</th>
+                                <th>Status</th>
+                                <th>Video ID</th>
+                                <th>Time</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for log in upload_logs[:10] %}
+                            <tr>
+                                <td class="font-monospace small">{{ log.post_id }}</td>
+                                <td>
+                                    {% if log.status == 'success' %}
+                                    <span class="badge bg-success">Success</span>
+                                    {% elif log.status == 'failed' %}
+                                    <span class="badge bg-danger" title="{{ log.error_message }}">Failed</span>
+                                    {% else %}
+                                    <span class="badge bg-warning">{{ log.status }}</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if log.youtube_video_id %}
+                                    <a href="https://youtube.com/shorts/{{ log.youtube_video_id }}" target="_blank" class="text-decoration-none small">
+                                        {{ log.youtube_video_id[:11] }}...
+                                    </a>
+                                    {% else %}
+                                    <span class="text-muted">-</span>
+                                    {% endif %}
+                                </td>
+                                <td class="text-muted small">{{ time_since(log.uploaded_at) }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="text-center text-muted py-4">
+                    <p class="mb-0">No upload history yet</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Delete Confirmation Modal -->
+<div class="modal fade" id="deleteModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title text-danger">
+                    <i class="bi bi-exclamation-triangle me-2"></i>Delete Creator
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>Are you sure you want to delete <strong>{{ creator.name }}</strong>?</p>
+                <p class="text-muted small">This will remove all upload history and settings for this creator. This action cannot be undone.</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-danger" onclick="confirmDelete()">
+                    <i class="bi bi-trash me-1"></i>Delete
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Connection Test Modal -->
+<div class="modal fade" id="connectionModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="bi bi-plug me-2"></i>Connection Test
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="connectionResults">
+                <div class="text-center py-4">
+                    <div class="spinner-border text-primary" role="status"></div>
+                    <p class="mt-2 mb-0">Testing connections...</p>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    const creatorId = {{ creator.id }};
+
+    async function saveSettings(event) {
+        event.preventDefault();
+
+        const btn = document.getElementById('saveSettingsBtn');
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Saving...';
+
+        try {
+            const response = await fetch(`/api/creators/${creatorId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    posts_per_day: parseInt(document.getElementById('postsPerDay').value),
+                    default_privacy: document.getElementById('defaultPrivacy').value,
+                    sheet_id: document.getElementById('sheetId').value,
+                    active: document.getElementById('activeToggle').checked
+                })
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                showToast('Settings Saved', 'Creator settings updated successfully', 'success');
+            } else {
+                throw new Error(data.error || 'Failed to save settings');
+            }
+        } catch (error) {
+            showToast('Error', error.message, 'error');
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="bi bi-check me-1"></i>Save Settings';
+        }
+
+        return false;
+    }
+
+    async function refreshStats() {
+        showToast('Refreshing', 'Fetching latest stats from Google Sheets...', 'info');
+
+        try {
+            const response = await fetch(`/api/creators/${creatorId}/refresh-stats`, { method: 'POST' });
+            const data = await response.json();
+
+            if (data.success) {
+                showToast('Stats Updated', 'Content stats refreshed successfully', 'success');
+                setTimeout(() => location.reload(), 1000);
+            } else {
+                throw new Error(data.error);
+            }
+        } catch (error) {
+            showToast('Error', error.message, 'error');
+        }
+    }
+
+    async function refreshQueue() {
+        const container = document.getElementById('queueContent');
+        container.innerHTML = '<div class="text-center py-4"><div class="spinner-border text-primary"></div></div>';
+
+        try {
+            const response = await fetch(`/api/creators/${creatorId}/queue?limit=10`);
+            const data = await response.json();
+
+            if (data.error) {
+                throw new Error(data.error);
+            }
+
+            if (data.shorts.length === 0) {
+                container.innerHTML = `
+                    <div class="text-center text-muted py-4">
+                        <i class="bi bi-inbox" style="font-size: 3rem;"></i>
+                        <p class="mt-2 mb-0">No pending videos in queue</p>
+                    </div>
+                `;
+                return;
+            }
+
+            let html = '<div class="list-group list-group-flush">';
+            for (const video of data.shorts) {
+                html += `
+                    <div class="list-group-item d-flex align-items-center">
+                        ${video.thumbnail_url ?
+                            `<img src="${video.thumbnail_url}" class="video-thumbnail me-3" alt="Thumbnail">` :
+                            `<div class="video-thumbnail me-3 bg-secondary d-flex align-items-center justify-content-center"><i class="bi bi-film"></i></div>`
+                        }
+                        <div class="flex-grow-1">
+                            <div class="fw-bold small">${video.post_id}</div>
+                            <div class="text-muted small text-truncate" style="max-width: 300px;">${video.caption}</div>
+                        </div>
+                        <div class="text-end">
+                            <span class="badge bg-success">${video.duration_str}</span>
+                        </div>
+                    </div>
+                `;
+            }
+            html += '</div>';
+
+            container.innerHTML = html;
+        } catch (error) {
+            container.innerHTML = `
+                <div class="text-center text-danger py-4">
+                    <i class="bi bi-exclamation-triangle" style="font-size: 2rem;"></i>
+                    <p class="mt-2 mb-0">${error.message}</p>
+                </div>
+            `;
+        }
+    }
+
+    async function testConnection() {
+        const modal = new bootstrap.Modal(document.getElementById('connectionModal'));
+        modal.show();
+
+        const resultsDiv = document.getElementById('connectionResults');
+        resultsDiv.innerHTML = `
+            <div class="text-center py-4">
+                <div class="spinner-border text-primary" role="status"></div>
+                <p class="mt-2 mb-0">Testing connections...</p>
+            </div>
+        `;
+
+        try {
+            const response = await fetch('/api/test-connection', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ creator_id: creatorId })
+            });
+
+            const data = await response.json();
+
+            resultsDiv.innerHTML = `
+                <div class="list-group list-group-flush">
+                    <div class="list-group-item d-flex justify-content-between align-items-center">
+                        <span><i class="bi bi-key me-2"></i>Credentials Valid</span>
+                        ${data.credentials_valid ?
+                            '<span class="badge bg-success">OK</span>' :
+                            '<span class="badge bg-danger">Failed</span>'
+                        }
+                    </div>
+                    <div class="list-group-item d-flex justify-content-between align-items-center">
+                        <span><i class="bi bi-youtube me-2"></i>YouTube Access</span>
+                        ${data.youtube_access ?
+                            '<span class="badge bg-success">OK</span>' :
+                            '<span class="badge bg-danger">Failed</span>'
+                        }
+                    </div>
+                    <div class="list-group-item d-flex justify-content-between align-items-center">
+                        <span><i class="bi bi-table me-2"></i>Sheets Access</span>
+                        ${data.sheets_access ?
+                            '<span class="badge bg-success">OK</span>' :
+                            '<span class="badge bg-danger">Failed</span>'
+                        }
+                    </div>
+                    ${data.channel_info ? `
+                    <div class="list-group-item">
+                        <small class="text-muted">Channel: ${data.channel_info.title}</small>
+                    </div>
+                    ` : ''}
+                    ${data.sheet_title ? `
+                    <div class="list-group-item">
+                        <small class="text-muted">Sheet: ${data.sheet_title}</small>
+                    </div>
+                    ` : ''}
+                    ${data.errors && data.errors.length > 0 ? `
+                    <div class="list-group-item text-danger small">
+                        Errors: ${data.errors.join(', ')}
+                    </div>
+                    ` : ''}
+                </div>
+            `;
+        } catch (error) {
+            resultsDiv.innerHTML = `
+                <div class="text-center text-danger py-4">
+                    <i class="bi bi-exclamation-triangle" style="font-size: 2rem;"></i>
+                    <p class="mt-2 mb-0">${error.message}</p>
+                </div>
+            `;
+        }
+    }
+
+    async function reauthorize() {
+        try {
+            const response = await fetch(`/api/creators/${creatorId}/reauth`, { method: 'POST' });
+            const data = await response.json();
+
+            if (data.authorization_url) {
+                window.location.href = data.authorization_url;
+            } else {
+                throw new Error(data.error || 'Failed to start re-authorization');
+            }
+        } catch (error) {
+            showToast('Error', error.message, 'error');
+        }
+    }
+
+    function deleteCreator() {
+        const modal = new bootstrap.Modal(document.getElementById('deleteModal'));
+        modal.show();
+    }
+
+    async function confirmDelete() {
+        try {
+            const response = await fetch(`/api/creators/${creatorId}`, { method: 'DELETE' });
+            const data = await response.json();
+
+            if (data.success) {
+                window.location.href = '{{ url_for("dashboard") }}';
+            } else {
+                throw new Error(data.error);
+            }
+        } catch (error) {
+            showToast('Error', error.message, 'error');
+        }
+    }
+</script>
+{% endblock %}
