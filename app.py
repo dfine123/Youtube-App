@@ -16,11 +16,7 @@ from flask import (
     Flask, render_template, request, jsonify, redirect,
     url_for, flash, session, Response, stream_with_context
 )
-from dotenv import load_dotenv
 import yaml
-
-# Load environment variables
-load_dotenv()
 
 # Import existing modules
 from src.database import Database, Creator, UploadLogEntry, ContentStats
@@ -31,12 +27,12 @@ from src.downloader import DriveDownloader
 from src.metadata import generate_shorts_metadata
 from src.utils import (
     get_config, get_runway_emoji, format_duration,
-    time_since, setup_logging, PROJECT_ROOT
+    time_since, setup_logging, PROJECT_ROOT, get_session_secret
 )
 
 # Initialize Flask app
 app = Flask(__name__)
-app.secret_key = os.getenv('FLASK_SECRET_KEY', os.urandom(24).hex())
+app.secret_key = get_session_secret()
 
 # Initialize database
 db = Database()
@@ -399,7 +395,7 @@ def api_oauth_start():
         client_secret = config['google']['client_secret']
 
         if not client_id or not client_secret:
-            return jsonify({'error': 'Google OAuth not configured. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET.'}), 400
+            return jsonify({'error': 'Google OAuth not configured. Add your credentials to credentials.py'}), 400
 
         # Build authorization URL
         from google_auth_oauthlib.flow import Flow

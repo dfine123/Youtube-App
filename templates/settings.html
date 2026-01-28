@@ -111,7 +111,7 @@
                         <li>Enable YouTube Data API v3, Google Sheets API, and Google Drive API</li>
                         <li>Create OAuth 2.0 credentials (Web application)</li>
                         <li>Add redirect URI: <code>http://localhost:5000/oauth/callback</code></li>
-                        <li>Set <code>GOOGLE_CLIENT_ID</code> and <code>GOOGLE_CLIENT_SECRET</code> in your <code>.env</code> file</li>
+                        <li>Open <code>credentials.py</code> and paste your Client ID and Client Secret</li>
                     </ol>
                 </div>
                 {% endif %}
@@ -197,13 +197,13 @@
     </div>
 </div>
 
-<!-- Environment Variables Reference -->
+<!-- Credentials Reference -->
 <div class="card">
     <div class="card-header">
-        <h5 class="mb-0"><i class="bi bi-terminal me-2"></i>Environment Variables</h5>
+        <h5 class="mb-0"><i class="bi bi-key me-2"></i>Credentials Configuration</h5>
     </div>
     <div class="card-body">
-        <p class="text-muted small mb-3">These environment variables can be set in your <code>.env</code> file:</p>
+        <p class="text-muted small mb-3">Edit <code>credentials.py</code> to configure your API keys:</p>
         <div class="table-responsive">
             <table class="table table-sm small">
                 <thead>
@@ -216,36 +216,30 @@
                 <tbody>
                     <tr>
                         <td><code>GOOGLE_CLIENT_ID</code></td>
-                        <td>Google OAuth Client ID</td>
+                        <td>Google OAuth Client ID from Cloud Console</td>
                         <td><i class="bi bi-check text-success"></i></td>
                     </tr>
                     <tr>
                         <td><code>GOOGLE_CLIENT_SECRET</code></td>
-                        <td>Google OAuth Client Secret</td>
+                        <td>Google OAuth Client Secret from Cloud Console</td>
                         <td><i class="bi bi-check text-success"></i></td>
                     </tr>
                     <tr>
                         <td><code>ENCRYPTION_KEY</code></td>
-                        <td>Fernet key for token encryption</td>
-                        <td><i class="bi bi-check text-success"></i></td>
+                        <td>Fernet key for token encryption (auto-generated if empty)</td>
+                        <td><span class="text-muted">Auto</span></td>
                     </tr>
                     <tr>
-                        <td><code>FLASK_SECRET_KEY</code></td>
-                        <td>Flask session secret (auto-generated if not set)</td>
-                        <td></td>
-                    </tr>
-                    <tr>
-                        <td><code>DEFAULT_PRIVACY_STATUS</code></td>
-                        <td>Override default privacy (public/unlisted/private)</td>
-                        <td></td>
-                    </tr>
-                    <tr>
-                        <td><code>DEFAULT_POSTS_PER_DAY</code></td>
-                        <td>Override default posts per day</td>
-                        <td></td>
+                        <td><code>SESSION_SECRET</code></td>
+                        <td>Flask session secret (auto-generated if empty)</td>
+                        <td><span class="text-muted">Auto</span></td>
                     </tr>
                 </tbody>
             </table>
+        </div>
+        <div class="alert alert-info small mt-3 mb-0">
+            <i class="bi bi-info-circle me-1"></i>
+            <strong>Tip:</strong> Copy <code>credentials_example.py</code> to <code>credentials.py</code> and fill in your values. The ENCRYPTION_KEY and SESSION_SECRET will be auto-generated on first run if left empty.
         </div>
     </div>
 </div>
