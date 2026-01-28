@@ -1,0 +1,223 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - YouTube Shorts{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="h3 mb-0">
+        <i class="bi bi-grid-1x2-fill me-2"></i>Dashboard
+    </h1>
+    <div class="text-muted small">
+        Last updated: {{ now.strftime('%Y-%m-%d %H:%M UTC') }}
+    </div>
+</div>
+
+<!-- Stats Overview -->
+<div class="row g-3 mb-4">
+    <div class="col-sm-6 col-lg-3">
+        <div class="card stat-card h-100">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h6 class="text-muted mb-2">Total Creators</h6>
+                        <h2 class="mb-0">{{ creators|length }}</h2>
+                    </div>
+                    <div class="align-self-center">
+                        <i class="bi bi-people-fill text-primary" style="font-size: 2rem;"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-sm-6 col-lg-3">
+        <div class="card stat-card h-100">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h6 class="text-muted mb-2">Shorts Ready</h6>
+                        <h2 class="mb-0">{{ total_shorts }}</h2>
+                    </div>
+                    <div class="align-self-center">
+                        <i class="bi bi-film text-info" style="font-size: 2rem;"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-sm-6 col-lg-3">
+        <div class="card stat-card h-100">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h6 class="text-muted mb-2">Today's Uploads</h6>
+                        <h2 class="mb-0">{{ total_uploads_today }}<span class="text-muted fs-5">/{{ total_quota_target }}</span></h2>
+                    </div>
+                    <div class="align-self-center">
+                        <i class="bi bi-cloud-upload text-success" style="font-size: 2rem;"></i>
+                    </div>
+                </div>
+                <div class="progress mt-2 progress-thin">
+                    <div class="progress-bar bg-success" style="width: {{ (total_uploads_today / total_quota_target * 100) if total_quota_target > 0 else 0 }}%"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-sm-6 col-lg-3">
+        <div class="card stat-card h-100">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h6 class="text-muted mb-2">API Quota Used</h6>
+                        <h2 class="mb-0">{{ quota_info.percent_used|round(0)|int }}%</h2>
+                    </div>
+                    <div class="align-self-center">
+                        <i class="bi bi-speedometer2 {% if quota_info.percent_used > 80 %}text-danger{% elif quota_info.percent_used > 50 %}text-warning{% else %}text-success{% endif %}" style="font-size: 2rem;"></i>
+                    </div>
+                </div>
+                <small class="text-muted">~{{ quota_info.total|int }} / {{ quota_info.daily_quota|int }} units</small>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Creators Table -->
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="mb-0">
+            <i class="bi bi-people me-2"></i>Creators
+        </h5>
+        <a href="{{ url_for('add_creator_page') }}" class="btn btn-sm btn-primary">
+            <i class="bi bi-plus me-1"></i>Add Creator
+        </a>
+    </div>
+    <div class="card-body p-0">
+        {% if creators %}
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th>Creator</th>
+                        <th class="text-center">Shorts Ready</th>
+                        <th class="text-center">Posts/Day</th>
+                        <th class="text-center">Runway</th>
+                        <th class="text-center">Today</th>
+                        <th>Last Upload</th>
+                        <th class="text-center">Status</th>
+                        <th class="text-end">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for creator in creators %}
+                    <tr class="creator-row" onclick="window.location='{{ url_for('creator_detail', creator_id=creator.id) }}'">
+                        <td>
+                            <div class="d-flex align-items-center">
+                                <div class="status-indicator bg-{{ creator.status_color }} me-2"></div>
+                                <div>
+                                    <strong>{{ creator.name }}</strong>
+                                    {% if not creator.active %}
+                                    <span class="badge bg-secondary ms-1">Inactive</span>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </td>
+                        <td class="text-center">
+                            <span class="fw-bold">{{ creator.shorts_ready }}</span>
+                        </td>
+                        <td class="text-center">{{ creator.posts_per_day }}</td>
+                        <td class="text-center">
+                            <span class="badge runway-badge bg-{{ creator.runway_color }}">
+                                {{ creator.runway_emoji }} {{ creator.days_runway }} days
+                            </span>
+                        </td>
+                        <td class="text-center">
+                            <span class="{% if creator.uploads_today >= creator.posts_per_day %}text-success{% endif %}">
+                                {{ creator.uploads_today }}/{{ creator.posts_per_day }}
+                            </span>
+                            {% if creator.uploads_today >= creator.posts_per_day %}
+                            <i class="bi bi-check-circle-fill text-success ms-1"></i>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <span class="text-muted small">{{ creator.last_upload_str }}</span>
+                        </td>
+                        <td class="text-center">
+                            {% if creator.status == 'active' %}
+                            <span class="badge bg-success">Active</span>
+                            {% elif creator.status == 'needs_auth' %}
+                            <span class="badge bg-warning">Needs Auth</span>
+                            {% elif creator.status == 'waiting' %}
+                            <span class="badge bg-info">Waiting</span>
+                            {% else %}
+                            <span class="badge bg-secondary">Inactive</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-end" onclick="event.stopPropagation();">
+                            <div class="btn-group btn-group-sm">
+                                <button class="btn btn-outline-primary" onclick="uploadCreator({{ creator.id }})" {% if not creator.can_upload %}disabled{% endif %} title="{{ creator.upload_reason }}">
+                                    <i class="bi bi-upload"></i>
+                                </button>
+                                <a href="{{ url_for('creator_detail', creator_id=creator.id) }}" class="btn btn-outline-secondary">
+                                    <i class="bi bi-eye"></i>
+                                </a>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="text-center py-5">
+            <i class="bi bi-inbox text-muted" style="font-size: 4rem;"></i>
+            <h4 class="mt-3">No Creators Yet</h4>
+            <p class="text-muted">Add your first creator to get started</p>
+            <a href="{{ url_for('add_creator_page') }}" class="btn btn-primary">
+                <i class="bi bi-plus me-1"></i>Add Creator
+            </a>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Quick Summary Cards for Mobile -->
+<div class="row g-3 mt-4 d-md-none">
+    {% for creator in creators %}
+    <div class="col-12">
+        <div class="card creator-card" onclick="window.location='{{ url_for('creator_detail', creator_id=creator.id) }}'">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start mb-2">
+                    <div>
+                        <h6 class="mb-0">{{ creator.name }}</h6>
+                        <small class="text-muted">{{ creator.shorts_ready }} shorts ready</small>
+                    </div>
+                    <span class="badge bg-{{ creator.status_color }}">{{ creator.status }}</span>
+                </div>
+                <div class="d-flex justify-content-between align-items-center">
+                    <span class="badge runway-badge bg-{{ creator.runway_color }}">
+                        {{ creator.runway_emoji }} {{ creator.days_runway }} days
+                    </span>
+                    <span class="small">{{ creator.uploads_today }}/{{ creator.posts_per_day }} today</span>
+                </div>
+                <div class="progress mt-2 progress-thin">
+                    <div class="progress-bar bg-primary" style="width: {{ (creator.uploads_today / creator.posts_per_day * 100) if creator.posts_per_day > 0 else 0 }}%"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+    .creator-row {
+        cursor: pointer;
+    }
+    .creator-row:hover {
+        background-color: rgba(88, 166, 255, 0.05) !important;
+    }
+</style>
+{% endblock %}

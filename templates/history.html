@@ -1,0 +1,196 @@
+{% extends "base.html" %}
+
+{% block title %}Upload History - YouTube Shorts{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="h3 mb-0">
+        <i class="bi bi-clock-history me-2"></i>Upload History
+    </h1>
+</div>
+
+<!-- Filters -->
+<div class="card mb-4">
+    <div class="card-body">
+        <form method="GET" action="{{ url_for('history_page') }}" class="row g-3 align-items-end">
+            <div class="col-md-4">
+                <label class="form-label small text-muted">Filter by Creator</label>
+                <select class="form-select" name="creator_id" onchange="this.form.submit()">
+                    <option value="">All Creators</option>
+                    {% for creator in creators %}
+                    <option value="{{ creator.id }}" {% if selected_creator_id == creator.id %}selected{% endif %}>
+                        {{ creator.name }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label small text-muted">Filter by Status</label>
+                <select class="form-select" name="status" onchange="this.form.submit()">
+                    <option value="">All Statuses</option>
+                    <option value="success" {% if selected_status == 'success' %}selected{% endif %}>Success</option>
+                    <option value="failed" {% if selected_status == 'failed' %}selected{% endif %}>Failed</option>
+                    <option value="skipped_too_long" {% if selected_status == 'skipped_too_long' %}selected{% endif %}>Skipped (Too Long)</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label small text-muted">Results</label>
+                <select class="form-select" name="limit" onchange="this.form.submit()">
+                    <option value="50" {% if request.args.get('limit', '100') == '50' %}selected{% endif %}>Last 50</option>
+                    <option value="100" {% if request.args.get('limit', '100') == '100' %}selected{% endif %}>Last 100</option>
+                    <option value="500" {% if request.args.get('limit', '100') == '500' %}selected{% endif %}>Last 500</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <a href="{{ url_for('history_page') }}" class="btn btn-outline-secondary w-100">
+                    <i class="bi bi-x me-1"></i>Clear
+                </a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Stats Summary -->
+<div class="row g-3 mb-4">
+    {% set success_count = logs|selectattr('status', 'equalto', 'success')|list|length %}
+    {% set failed_count = logs|selectattr('status', 'equalto', 'failed')|list|length %}
+    {% set skipped_count = logs|selectattr('status', 'equalto', 'skipped_too_long')|list|length %}
+
+    <div class="col-sm-4">
+        <div class="card bg-success bg-opacity-10 border-success">
+            <div class="card-body text-center py-3">
+                <h4 class="text-success mb-0">{{ success_count }}</h4>
+                <small class="text-muted">Successful</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-sm-4">
+        <div class="card bg-danger bg-opacity-10 border-danger">
+            <div class="card-body text-center py-3">
+                <h4 class="text-danger mb-0">{{ failed_count }}</h4>
+                <small class="text-muted">Failed</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-sm-4">
+        <div class="card bg-warning bg-opacity-10 border-warning">
+            <div class="card-body text-center py-3">
+                <h4 class="text-warning mb-0">{{ skipped_count }}</h4>
+                <small class="text-muted">Skipped</small>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- History Table -->
+<div class="card">
+    <div class="card-body p-0">
+        {% if logs %}
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th>Time</th>
+                        <th>Creator</th>
+                        <th>Post ID</th>
+                        <th>Status</th>
+                        <th>Duration</th>
+                        <th>YouTube</th>
+                        <th>Details</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for log in logs %}
+                    <tr>
+                        <td>
+                            <span class="text-muted small" title="{{ log.uploaded_at.strftime('%Y-%m-%d %H:%M:%S UTC') if log.uploaded_at else '' }}">
+                                {{ log.uploaded_at_str }}
+                            </span>
+                        </td>
+                        <td>
+                            <a href="{{ url_for('creator_detail', creator_id=log.creator_id) }}" class="text-decoration-none">
+                                {{ log.creator_name }}
+                            </a>
+                        </td>
+                        <td>
+                            <code class="small">{{ log.post_id }}</code>
+                        </td>
+                        <td>
+                            {% if log.status == 'success' %}
+                            <span class="badge bg-success">
+                                <i class="bi bi-check me-1"></i>Success
+                            </span>
+                            {% elif log.status == 'failed' %}
+                            <span class="badge bg-danger">
+                                <i class="bi bi-x me-1"></i>Failed
+                            </span>
+                            {% elif log.status == 'skipped_too_long' %}
+                            <span class="badge bg-warning">
+                                <i class="bi bi-skip-forward me-1"></i>Skipped
+                            </span>
+                            {% else %}
+                            <span class="badge bg-secondary">{{ log.status }}</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if log.video_duration %}
+                            <span class="{% if log.video_duration >= 60 %}text-warning{% else %}text-success{% endif %}">
+                                {{ format_duration(log.video_duration) }}
+                            </span>
+                            {% else %}
+                            <span class="text-muted">-</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if log.youtube_video_id %}
+                            <a href="https://youtube.com/shorts/{{ log.youtube_video_id }}" target="_blank" class="btn btn-sm btn-outline-danger">
+                                <i class="bi bi-youtube"></i>
+                            </a>
+                            {% else %}
+                            <span class="text-muted">-</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if log.error_message %}
+                            <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="tooltip" title="{{ log.error_message }}">
+                                <i class="bi bi-info-circle"></i>
+                            </button>
+                            {% else %}
+                            <span class="text-muted">-</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="text-center py-5">
+            <i class="bi bi-inbox text-muted" style="font-size: 4rem;"></i>
+            <h4 class="mt-3">No Upload History</h4>
+            <p class="text-muted">Upload history will appear here after your first upload</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Pagination Info -->
+{% if logs %}
+<div class="text-center text-muted small mt-3">
+    Showing {{ logs|length }} most recent uploads
+    {% if selected_creator_id or selected_status %}
+    (filtered)
+    {% endif %}
+</div>
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Initialize tooltips
+    var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+    var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+        return new bootstrap.Tooltip(tooltipTriggerEl);
+    });
+</script>
+{% endblock %}
