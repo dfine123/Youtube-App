@@ -34,6 +34,30 @@ from src.utils import (
 app = Flask(__name__)
 app.secret_key = get_session_secret()
 
+# Configure for HTTPS (required for OAuth on Replit/production)
+app.config['PREFERRED_URL_SCHEME'] = 'https'
+
+
+def get_oauth_redirect_uri(endpoint: str = 'oauth_callback') -> str:
+    """Get the OAuth redirect URI, forcing HTTPS for production environments."""
+    # Map endpoint names to URL paths
+    endpoint_paths = {
+        'oauth_callback': '/oauth/callback',
+        'oauth_callback_reauth': '/oauth/callback/reauth'
+    }
+
+    # Check if we're on Replit or other cloud platform
+    replit_domain = os.environ.get('REPLIT_DEV_DOMAIN')
+    if replit_domain:
+        path = endpoint_paths.get(endpoint, '/oauth/callback')
+        return f"https://{replit_domain}{path}"
+
+    # Build URL and force HTTPS if not localhost
+    url = url_for(endpoint, _external=True)
+    if not url.startswith('http://localhost') and not url.startswith('http://127.0.0.1'):
+        url = url.replace('http://', 'https://')
+    return url
+
 # Initialize database
 db = Database()
 
@@ -400,6 +424,7 @@ def api_oauth_start():
         # Build authorization URL
         from google_auth_oauthlib.flow import Flow
 
+        redirect_uri = get_oauth_redirect_uri('oauth_callback')
         flow = Flow.from_client_config(
             {
                 "web": {
@@ -407,12 +432,12 @@ def api_oauth_start():
                     "client_secret": client_secret,
                     "auth_uri": "https://accounts.google.com/o/oauth2/auth",
                     "token_uri": "https://oauth2.googleapis.com/token",
-                    "redirect_uris": [url_for('oauth_callback', _external=True)]
+                    "redirect_uris": [redirect_uri]
                 }
             },
             scopes=SCOPES
         )
-        flow.redirect_uri = url_for('oauth_callback', _external=True)
+        flow.redirect_uri = redirect_uri
 
         authorization_url, state = flow.authorization_url(
             access_type='offline',
@@ -452,6 +477,7 @@ def oauth_callback():
         from google_auth_oauthlib.flow import Flow
         from datetime import timedelta
 
+        redirect_uri = get_oauth_redirect_uri('oauth_callback')
         flow = Flow.from_client_config(
             {
                 "web": {
@@ -459,13 +485,13 @@ def oauth_callback():
                     "client_secret": config['google']['client_secret'],
                     "auth_uri": "https://accounts.google.com/o/oauth2/auth",
                     "token_uri": "https://oauth2.googleapis.com/token",
-                    "redirect_uris": [url_for('oauth_callback', _external=True)]
+                    "redirect_uris": [redirect_uri]
                 }
             },
             scopes=SCOPES,
             state=session.get('oauth_state')
         )
-        flow.redirect_uri = url_for('oauth_callback', _external=True)
+        flow.redirect_uri = redirect_uri
 
         # Exchange code for tokens
         flow.fetch_token(code=code)
@@ -539,6 +565,7 @@ def api_reauth(creator_id: int):
         config = get_config()
         from google_auth_oauthlib.flow import Flow
 
+        redirect_uri = get_oauth_redirect_uri('oauth_callback_reauth')
         flow = Flow.from_client_config(
             {
                 "web": {
@@ -546,12 +573,12 @@ def api_reauth(creator_id: int):
                     "client_secret": config['google']['client_secret'],
                     "auth_uri": "https://accounts.google.com/o/oauth2/auth",
                     "token_uri": "https://oauth2.googleapis.com/token",
-                    "redirect_uris": [url_for('oauth_callback_reauth', _external=True)]
+                    "redirect_uris": [redirect_uri]
                 }
             },
             scopes=SCOPES
         )
-        flow.redirect_uri = url_for('oauth_callback_reauth', _external=True)
+        flow.redirect_uri = redirect_uri
 
         authorization_url, state = flow.authorization_url(
             access_type='offline',
@@ -593,6 +620,7 @@ def oauth_callback_reauth():
         from google_auth_oauthlib.flow import Flow
         from datetime import timedelta
 
+        redirect_uri = get_oauth_redirect_uri('oauth_callback_reauth')
         flow = Flow.from_client_config(
             {
                 "web": {
@@ -600,13 +628,13 @@ def oauth_callback_reauth():
                     "client_secret": config['google']['client_secret'],
                     "auth_uri": "https://accounts.google.com/o/oauth2/auth",
                     "token_uri": "https://oauth2.googleapis.com/token",
-                    "redirect_uris": [url_for('oauth_callback_reauth', _external=True)]
+                    "redirect_uris": [redirect_uri]
                 }
             },
             scopes=SCOPES,
             state=session.get('oauth_state')
         )
-        flow.redirect_uri = url_for('oauth_callback_reauth', _external=True)
+        flow.redirect_uri = redirect_uri
 
         flow.fetch_token(code=code)
         credentials = flow.credentials
