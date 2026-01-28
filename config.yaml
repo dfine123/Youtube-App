@@ -1,0 +1,15 @@
+google:
+  client_id: ""  # Set in .env or here
+  client_secret: ""  # Set in .env or here
+
+defaults:
+  privacy_status: "public"  # public for Shorts growth (can override per creator)
+  category_id: "22"  # People & Blogs
+  posts_per_day: 3  # default, can override per creator
+  upload_spacing_hours: 2  # minimum hours between uploads (fixed at 2)
+  max_video_duration: 60  # seconds - videos >= this are skipped
+
+paths:
+  temp_downloads: "./temp"
+  logs: "./logs"
+  database: "./creators.db"
