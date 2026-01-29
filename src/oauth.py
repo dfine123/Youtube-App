@@ -2,7 +2,7 @@
 
 import os
 from datetime import datetime, timedelta
-from typing import Optional, Tuple, Dict, Any
+from typing import Optional, Tuple, Dict, Any, List
 
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
@@ -207,6 +207,180 @@ class YouTubeClient:
         except Exception as e:
             logger.error(f"Upload permission verification failed: {e}")
             return False
+
+    def get_channel_details(self) -> Optional[Dict[str, Any]]:
+        """
+        Get detailed channel info including thumbnail.
+
+        Returns:
+            Dict with channel details including thumbnail URL.
+        """
+        try:
+            response = self.service.channels().list(
+                part='snippet,statistics',
+                mine=True
+            ).execute()
+
+            if 'items' in response and len(response['items']) > 0:
+                channel = response['items'][0]
+                snippet = channel['snippet']
+                stats = channel.get('statistics', {})
+                thumbnails = snippet.get('thumbnails', {})
+
+                # Get best available thumbnail
+                thumbnail_url = ''
+                for size in ['medium', 'default', 'high']:
+                    if size in thumbnails:
+                        thumbnail_url = thumbnails[size].get('url', '')
+                        break
+
+                return {
+                    'id': channel['id'],
+                    'title': snippet['title'],
+                    'description': snippet.get('description', ''),
+                    'thumbnail_url': thumbnail_url,
+                    'subscriber_count': int(stats.get('subscriberCount', 0)),
+                    'video_count': int(stats.get('videoCount', 0)),
+                    'view_count': int(stats.get('viewCount', 0))
+                }
+
+            return None
+        except Exception as e:
+            logger.error(f"Failed to get channel details: {e}")
+            return None
+
+    def get_video_statistics(self, video_ids: List[str]) -> List[Dict[str, Any]]:
+        """
+        Get statistics for multiple videos.
+        Costs 1 quota unit per call (can fetch up to 50 videos per call).
+
+        Args:
+            video_ids: List of YouTube video IDs
+
+        Returns:
+            List of video statistics dicts
+        """
+        if not video_ids:
+            return []
+
+        results = []
+
+        # YouTube API allows max 50 videos per request
+        batch_size = 50
+        for i in range(0, len(video_ids), batch_size):
+            batch = video_ids[i:i + batch_size]
+
+            try:
+                response = self.service.videos().list(
+                    part='snippet,statistics,contentDetails',
+                    id=','.join(batch)
+                ).execute()
+
+                for item in response.get('items', []):
+                    snippet = item['snippet']
+                    stats = item.get('statistics', {})
+                    content = item.get('contentDetails', {})
+                    thumbnails = snippet.get('thumbnails', {})
+
+                    # Get best thumbnail
+                    thumbnail_url = ''
+                    for size in ['medium', 'default', 'high', 'standard', 'maxres']:
+                        if size in thumbnails:
+                            thumbnail_url = thumbnails[size].get('url', '')
+                            break
+
+                    # Parse duration (ISO 8601 format like PT1M30S)
+                    duration_str = content.get('duration', 'PT0S')
+                    duration_seconds = self._parse_duration(duration_str)
+
+                    # Parse published date
+                    published_at = None
+                    if snippet.get('publishedAt'):
+                        try:
+                            published_at = datetime.fromisoformat(
+                                snippet['publishedAt'].replace('Z', '+00:00')
+                            ).replace(tzinfo=None)
+                        except (ValueError, AttributeError):
+                            pass
+
+                    results.append({
+                        'video_id': item['id'],
+                        'title': snippet.get('title', ''),
+                        'description': snippet.get('description', ''),
+                        'thumbnail_url': thumbnail_url,
+                        'views': int(stats.get('viewCount', 0)),
+                        'likes': int(stats.get('likeCount', 0)),
+                        'comments': int(stats.get('commentCount', 0)),
+                        'duration_seconds': duration_seconds,
+                        'published_at': published_at
+                    })
+
+            except Exception as e:
+                logger.error(f"Failed to get video statistics for batch: {e}")
+
+        return results
+
+    def get_channel_videos(self, channel_id: str, max_results: int = 50) -> List[str]:
+        """
+        Get video IDs from a channel's uploads playlist.
+
+        Args:
+            channel_id: YouTube channel ID
+            max_results: Maximum number of videos to fetch
+
+        Returns:
+            List of video IDs
+        """
+        try:
+            # First get the uploads playlist ID
+            channel_response = self.service.channels().list(
+                part='contentDetails',
+                id=channel_id
+            ).execute()
+
+            if not channel_response.get('items'):
+                return []
+
+            uploads_playlist_id = channel_response['items'][0]['contentDetails']['relatedPlaylists']['uploads']
+
+            # Get videos from uploads playlist
+            video_ids = []
+            next_page_token = None
+
+            while len(video_ids) < max_results:
+                playlist_response = self.service.playlistItems().list(
+                    part='contentDetails',
+                    playlistId=uploads_playlist_id,
+                    maxResults=min(50, max_results - len(video_ids)),
+                    pageToken=next_page_token
+                ).execute()
+
+                for item in playlist_response.get('items', []):
+                    video_ids.append(item['contentDetails']['videoId'])
+
+                next_page_token = playlist_response.get('nextPageToken')
+                if not next_page_token:
+                    break
+
+            return video_ids
+
+        except Exception as e:
+            logger.error(f"Failed to get channel videos: {e}")
+            return []
+
+    @staticmethod
+    def _parse_duration(duration_str: str) -> int:
+        """Parse ISO 8601 duration to seconds."""
+        import re
+        match = re.match(r'PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?', duration_str)
+        if not match:
+            return 0
+
+        hours = int(match.group(1) or 0)
+        minutes = int(match.group(2) or 0)
+        seconds = int(match.group(3) or 0)
+
+        return hours * 3600 + minutes * 60 + seconds
 
 
 class SheetsClient:

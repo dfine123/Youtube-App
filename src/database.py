@@ -108,6 +108,39 @@ class ContentStats:
         )
 
 
+@dataclass
+class VideoStats:
+    """Represents YouTube video statistics."""
+    id: Optional[int]
+    creator_id: int
+    youtube_video_id: str
+    title: str
+    thumbnail_url: str
+    views: int
+    likes: int
+    comments: int
+    duration_seconds: int
+    uploaded_at: datetime
+    last_updated: datetime
+
+    @classmethod
+    def from_row(cls, row: sqlite3.Row) -> 'VideoStats':
+        """Create a VideoStats instance from a database row."""
+        return cls(
+            id=row['id'],
+            creator_id=row['creator_id'],
+            youtube_video_id=row['youtube_video_id'],
+            title=row['title'],
+            thumbnail_url=row['thumbnail_url'] or '',
+            views=row['views'] or 0,
+            likes=row['likes'] or 0,
+            comments=row['comments'] or 0,
+            duration_seconds=row['duration_seconds'] or 0,
+            uploaded_at=datetime.fromisoformat(row['uploaded_at']) if row['uploaded_at'] else datetime.now(),
+            last_updated=datetime.fromisoformat(row['last_updated']) if row['last_updated'] else datetime.now()
+        )
+
+
 class Database:
     """SQLite database manager for YouTube Shorts uploader."""
 
@@ -179,10 +212,43 @@ class Database:
             )
         ''')
 
+        # Create video_stats table for caching YouTube statistics
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS video_stats (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                creator_id INTEGER NOT NULL,
+                youtube_video_id TEXT NOT NULL UNIQUE,
+                title TEXT,
+                thumbnail_url TEXT,
+                views INTEGER DEFAULT 0,
+                likes INTEGER DEFAULT 0,
+                comments INTEGER DEFAULT 0,
+                duration_seconds INTEGER DEFAULT 0,
+                uploaded_at TEXT,
+                last_updated TEXT,
+                FOREIGN KEY (creator_id) REFERENCES creators(id)
+            )
+        ''')
+
+        # Create daily_views table for tracking view trends
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS daily_views (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                creator_id INTEGER NOT NULL,
+                date TEXT NOT NULL,
+                views INTEGER DEFAULT 0,
+                UNIQUE(creator_id, date),
+                FOREIGN KEY (creator_id) REFERENCES creators(id)
+            )
+        ''')
+
         # Create indexes for better performance
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_upload_log_creator ON upload_log(creator_id)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_upload_log_post ON upload_log(post_id)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_upload_log_status ON upload_log(status)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_video_stats_creator ON video_stats(creator_id)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_video_stats_views ON video_stats(views DESC)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_daily_views_creator ON daily_views(creator_id)')
 
         conn.commit()
         conn.close()
@@ -587,3 +653,278 @@ class Database:
             return creator.posts_per_day
 
         return max(0, creator.posts_per_day - creator.uploads_today)
+
+    # ========== Video Stats ==========
+
+    def upsert_video_stats(
+        self,
+        creator_id: int,
+        youtube_video_id: str,
+        title: str,
+        thumbnail_url: str,
+        views: int,
+        likes: int,
+        comments: int,
+        duration_seconds: int = 0,
+        uploaded_at: Optional[datetime] = None
+    ) -> int:
+        """Insert or update video statistics."""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        now = datetime.utcnow().isoformat()
+        uploaded_at_str = uploaded_at.isoformat() if uploaded_at else now
+
+        cursor.execute('''
+            INSERT INTO video_stats (
+                creator_id, youtube_video_id, title, thumbnail_url,
+                views, likes, comments, duration_seconds, uploaded_at, last_updated
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(youtube_video_id) DO UPDATE SET
+                title = excluded.title,
+                thumbnail_url = excluded.thumbnail_url,
+                views = excluded.views,
+                likes = excluded.likes,
+                comments = excluded.comments,
+                last_updated = excluded.last_updated
+        ''', (
+            creator_id, youtube_video_id, title, thumbnail_url,
+            views, likes, comments, duration_seconds, uploaded_at_str, now
+        ))
+
+        conn.commit()
+        video_id = cursor.lastrowid
+        conn.close()
+
+        return video_id
+
+    def get_video_stats(self, youtube_video_id: str) -> Optional[VideoStats]:
+        """Get stats for a specific video."""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute('SELECT * FROM video_stats WHERE youtube_video_id = ?', (youtube_video_id,))
+        row = cursor.fetchone()
+        conn.close()
+
+        if row:
+            return VideoStats.from_row(row)
+        return None
+
+    def get_creator_video_stats(
+        self,
+        creator_id: int,
+        order_by: str = 'uploaded_at',
+        order_dir: str = 'DESC',
+        limit: int = 50
+    ) -> List[VideoStats]:
+        """Get all video stats for a creator."""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        # Validate order_by to prevent SQL injection
+        valid_order_columns = {'uploaded_at', 'views', 'likes', 'comments', 'title'}
+        if order_by not in valid_order_columns:
+            order_by = 'uploaded_at'
+
+        order_dir = 'DESC' if order_dir.upper() == 'DESC' else 'ASC'
+
+        cursor.execute(f'''
+            SELECT * FROM video_stats
+            WHERE creator_id = ?
+            ORDER BY {order_by} {order_dir}
+            LIMIT ?
+        ''', (creator_id, limit))
+
+        rows = cursor.fetchall()
+        conn.close()
+
+        return [VideoStats.from_row(row) for row in rows]
+
+    def get_creator_total_views(self, creator_id: int) -> int:
+        """Get total views across all videos for a creator."""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute(
+            'SELECT COALESCE(SUM(views), 0) as total FROM video_stats WHERE creator_id = ?',
+            (creator_id,)
+        )
+        row = cursor.fetchone()
+        conn.close()
+
+        return row['total'] if row else 0
+
+    def get_creator_video_count(self, creator_id: int) -> int:
+        """Get total number of uploaded videos for a creator."""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute(
+            'SELECT COUNT(*) as count FROM video_stats WHERE creator_id = ?',
+            (creator_id,)
+        )
+        row = cursor.fetchone()
+        conn.close()
+
+        return row['count'] if row else 0
+
+    def get_top_video(self, creator_id: Optional[int] = None) -> Optional[VideoStats]:
+        """Get the top performing video by views, optionally for a specific creator."""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        if creator_id:
+            cursor.execute(
+                'SELECT * FROM video_stats WHERE creator_id = ? ORDER BY views DESC LIMIT 1',
+                (creator_id,)
+            )
+        else:
+            cursor.execute('SELECT * FROM video_stats ORDER BY views DESC LIMIT 1')
+
+        row = cursor.fetchone()
+        conn.close()
+
+        if row:
+            return VideoStats.from_row(row)
+        return None
+
+    def get_bottom_video(self, creator_id: int) -> Optional[VideoStats]:
+        """Get the worst performing video by views for a creator."""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute(
+            'SELECT * FROM video_stats WHERE creator_id = ? ORDER BY views ASC LIMIT 1',
+            (creator_id,)
+        )
+        row = cursor.fetchone()
+        conn.close()
+
+        if row:
+            return VideoStats.from_row(row)
+        return None
+
+    def get_global_stats(self) -> Dict[str, Any]:
+        """Get aggregate stats across all creators."""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute('''
+            SELECT
+                COALESCE(SUM(views), 0) as total_views,
+                COUNT(*) as total_videos,
+                COALESCE(AVG(views), 0) as avg_views
+            FROM video_stats
+        ''')
+        row = cursor.fetchone()
+        conn.close()
+
+        return {
+            'total_views': row['total_views'] if row else 0,
+            'total_videos': row['total_videos'] if row else 0,
+            'avg_views': round(row['avg_views'], 1) if row else 0
+        }
+
+    def get_video_ids_for_creator(self, creator_id: int) -> List[str]:
+        """Get all YouTube video IDs for a creator from upload logs."""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute('''
+            SELECT DISTINCT youtube_video_id FROM upload_log
+            WHERE creator_id = ? AND youtube_video_id IS NOT NULL AND status = 'success'
+        ''', (creator_id,))
+
+        rows = cursor.fetchall()
+        conn.close()
+
+        return [row['youtube_video_id'] for row in rows]
+
+    def get_stats_last_updated(self, creator_id: int) -> Optional[datetime]:
+        """Get when stats were last updated for a creator."""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute('''
+            SELECT MAX(last_updated) as last_updated FROM video_stats WHERE creator_id = ?
+        ''', (creator_id,))
+        row = cursor.fetchone()
+        conn.close()
+
+        if row and row['last_updated']:
+            return datetime.fromisoformat(row['last_updated'])
+        return None
+
+    def should_refresh_stats(self, creator_id: int, hours_threshold: int = 6) -> bool:
+        """Check if stats should be refreshed (older than threshold)."""
+        last_updated = self.get_stats_last_updated(creator_id)
+        if not last_updated:
+            return True
+
+        hours_since = (datetime.utcnow() - last_updated).total_seconds() / 3600
+        return hours_since >= hours_threshold
+
+    # ========== Daily Views Tracking ==========
+
+    def record_daily_views(self, creator_id: int, views: int, for_date: Optional[date] = None) -> None:
+        """Record total views for a creator on a specific date."""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        target_date = (for_date or date.today()).isoformat()
+
+        cursor.execute('''
+            INSERT INTO daily_views (creator_id, date, views)
+            VALUES (?, ?, ?)
+            ON CONFLICT(creator_id, date) DO UPDATE SET views = excluded.views
+        ''', (creator_id, target_date, views))
+
+        conn.commit()
+        conn.close()
+
+    def get_views_trend(self, creator_id: int, days: int = 30) -> List[Dict[str, Any]]:
+        """Get daily views trend for a creator."""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute('''
+            SELECT date, views FROM daily_views
+            WHERE creator_id = ?
+            ORDER BY date DESC
+            LIMIT ?
+        ''', (creator_id, days))
+
+        rows = cursor.fetchall()
+        conn.close()
+
+        # Return in chronological order
+        return [{'date': row['date'], 'views': row['views']} for row in reversed(rows)]
+
+    def get_views_change(self, creator_id: int, days: int = 7) -> int:
+        """Get views gained in the last N days."""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        # Get earliest and latest views in the period
+        cursor.execute('''
+            SELECT views FROM daily_views
+            WHERE creator_id = ?
+            ORDER BY date DESC
+            LIMIT 1
+        ''', (creator_id,))
+        latest = cursor.fetchone()
+
+        cursor.execute('''
+            SELECT views FROM daily_views
+            WHERE creator_id = ?
+            ORDER BY date ASC
+            LIMIT 1 OFFSET ?
+        ''', (creator_id, max(0, days - 1)))
+        earliest = cursor.fetchone()
+
+        conn.close()
+
+        if latest and earliest:
+            return latest['views'] - earliest['views']
+        return 0

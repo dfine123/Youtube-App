@@ -19,7 +19,7 @@ from flask import (
 import yaml
 
 # Import existing modules
-from src.database import Database, Creator, UploadLogEntry, ContentStats
+from src.database import Database, Creator, UploadLogEntry, ContentStats, VideoStats
 from src.oauth import OAuthManager, YouTubeClient, SheetsClient, verify_all_connections, SCOPES
 from src.sheets import SheetsManager
 from src.uploader import YouTubeUploader, estimate_quota_usage
@@ -164,6 +164,108 @@ def refresh_creator_stats(creator: Creator) -> dict:
         return {'success': False, 'error': str(e)}
 
 
+def refresh_video_stats(creator: Creator, force: bool = False) -> dict:
+    """
+    Refresh YouTube video statistics for a creator.
+    Caches results and only refreshes if needed (every 6 hours) unless forced.
+    """
+    try:
+        # Check if refresh is needed
+        if not force and not db.should_refresh_stats(creator.id):
+            return {
+                'success': True,
+                'message': 'Stats are still fresh',
+                'refreshed': False
+            }
+
+        oauth = OAuthManager()
+        credentials, was_refreshed = oauth.get_valid_credentials(
+            creator.access_token,
+            creator.refresh_token,
+            creator.token_expiry
+        )
+
+        if was_refreshed:
+            expiry = credentials.expiry.replace(tzinfo=None) if credentials.expiry else None
+            db.update_tokens(creator.name, credentials.token, token_expiry=expiry)
+
+        youtube = YouTubeClient(credentials)
+
+        # Get video IDs from upload logs (videos we've uploaded)
+        video_ids = db.get_video_ids_for_creator(creator.id)
+
+        if not video_ids:
+            # Try to get videos from channel directly
+            video_ids = youtube.get_channel_videos(creator.channel_id, max_results=100)
+
+        if not video_ids:
+            return {
+                'success': True,
+                'message': 'No videos found',
+                'refreshed': False,
+                'videos_updated': 0
+            }
+
+        # Fetch statistics from YouTube API
+        video_stats = youtube.get_video_statistics(video_ids)
+
+        # Store in database
+        total_views = 0
+        for stats in video_stats:
+            db.upsert_video_stats(
+                creator_id=creator.id,
+                youtube_video_id=stats['video_id'],
+                title=stats['title'],
+                thumbnail_url=stats['thumbnail_url'],
+                views=stats['views'],
+                likes=stats['likes'],
+                comments=stats['comments'],
+                duration_seconds=stats['duration_seconds'],
+                uploaded_at=stats['published_at']
+            )
+            total_views += stats['views']
+
+        # Record daily views for trend tracking
+        from datetime import date
+        db.record_daily_views(creator.id, total_views, date.today())
+
+        return {
+            'success': True,
+            'message': f'Updated {len(video_stats)} videos',
+            'refreshed': True,
+            'videos_updated': len(video_stats),
+            'total_views': total_views
+        }
+
+    except Exception as e:
+        logger.error(f"Failed to refresh video stats for {creator.name}: {e}")
+        return {'success': False, 'error': str(e), 'refreshed': False}
+
+
+def get_creator_video_summary(creator_id: int) -> dict:
+    """Get a summary of video stats for a creator."""
+    total_views = db.get_creator_total_views(creator_id)
+    video_count = db.get_creator_video_count(creator_id)
+    top_video = db.get_top_video(creator_id)
+    last_updated = db.get_stats_last_updated(creator_id)
+    views_7d = db.get_views_change(creator_id, days=7)
+
+    return {
+        'total_views': total_views,
+        'video_count': video_count,
+        'avg_views': round(total_views / video_count, 1) if video_count > 0 else 0,
+        'views_7d': views_7d,
+        'top_video': {
+            'id': top_video.youtube_video_id,
+            'title': top_video.title,
+            'thumbnail_url': top_video.thumbnail_url,
+            'views': top_video.views
+        } if top_video else None,
+        'last_updated': last_updated.isoformat() if last_updated else None,
+        'last_updated_str': time_since(last_updated) if last_updated else 'Never'
+    }
+
+
 # ========== Page Routes ==========
 
 @app.route('/')
@@ -172,12 +274,26 @@ def dashboard():
     db.reset_daily_counts()  # Reset counts if new day
 
     creators = db.get_all_creators(active_only=False)
-    creator_data = [get_creator_status(c) for c in creators]
+    creator_data = []
+
+    for c in creators:
+        status = get_creator_status(c)
+        # Add video stats summary
+        video_summary = get_creator_video_summary(c.id)
+        status['total_views'] = video_summary['total_views']
+        status['video_count'] = video_summary['video_count']
+        status['views_7d'] = video_summary['views_7d']
+        status['stats_last_updated'] = video_summary['last_updated_str']
+        creator_data.append(status)
 
     # Calculate totals
     total_shorts = sum(c['shorts_ready'] for c in creator_data)
     total_uploads_today = sum(c['uploads_today'] for c in creator_data)
     total_quota_target = sum(c['posts_per_day'] for c in creator_data)
+
+    # Get global video stats
+    global_stats = db.get_global_stats()
+    top_video = db.get_top_video()
 
     # Estimate quota usage
     quota_info = estimate_quota_usage(total_uploads_today)
@@ -188,6 +304,8 @@ def dashboard():
         total_uploads_today=total_uploads_today,
         total_quota_target=total_quota_target,
         quota_info=quota_info,
+        global_stats=global_stats,
+        top_video=top_video,
         now=datetime.utcnow()
     )
 
@@ -201,6 +319,17 @@ def creator_detail(creator_id: int):
         return redirect(url_for('dashboard'))
 
     creator_status = get_creator_status(creator)
+
+    # Get video statistics summary
+    video_summary = get_creator_video_summary(creator_id)
+    top_video = db.get_top_video(creator_id)
+    bottom_video = db.get_bottom_video(creator_id)
+    views_trend = db.get_views_trend(creator_id, days=30)
+
+    # Get uploaded videos grid (sorted by newest by default)
+    sort_by = request.args.get('sort', 'uploaded_at')
+    sort_dir = request.args.get('dir', 'DESC')
+    video_grid = db.get_creator_video_stats(creator_id, order_by=sort_by, order_dir=sort_dir, limit=100)
 
     # Get upload history
     upload_logs = db.get_upload_logs(creator_id=creator_id, limit=50)
@@ -228,8 +357,15 @@ def creator_detail(creator_id: int):
 
     return render_template('creator_detail.html',
         creator=creator_status,
+        video_summary=video_summary,
+        top_video=top_video,
+        bottom_video=bottom_video,
+        views_trend=views_trend,
+        video_grid=video_grid,
         upload_logs=upload_logs,
         pending_videos=pending_videos,
+        sort_by=sort_by,
+        sort_dir=sort_dir,
         format_duration=format_duration,
         time_since=time_since
     )
@@ -399,6 +535,117 @@ def api_refresh_all_stats():
         })
 
     return jsonify({'results': results})
+
+
+@app.route('/api/creators/<int:creator_id>/refresh-video-stats', methods=['POST'])
+def api_refresh_video_stats(creator_id: int):
+    """Refresh YouTube video statistics for a creator."""
+    creator = db.get_creator_by_id(creator_id)
+    if not creator:
+        return jsonify({'error': 'Creator not found'}), 404
+
+    data = request.get_json() or {}
+    force = data.get('force', False)
+
+    result = refresh_video_stats(creator, force=force)
+    if result['success']:
+        # Get updated summary
+        summary = get_creator_video_summary(creator_id)
+        return jsonify({
+            'success': True,
+            'refreshed': result.get('refreshed', False),
+            'message': result.get('message', ''),
+            'videos_updated': result.get('videos_updated', 0),
+            'summary': summary
+        })
+    return jsonify({'error': result.get('error', 'Unknown error')}), 500
+
+
+@app.route('/api/refresh-all-video-stats', methods=['POST'])
+def api_refresh_all_video_stats():
+    """Refresh video stats for all active creators."""
+    data = request.get_json() or {}
+    force = data.get('force', False)
+
+    creators = db.get_all_creators()
+    results = []
+
+    for creator in creators:
+        result = refresh_video_stats(creator, force=force)
+        results.append({
+            'creator': creator.name,
+            'success': result['success'],
+            'refreshed': result.get('refreshed', False),
+            'videos_updated': result.get('videos_updated', 0),
+            'error': result.get('error')
+        })
+
+    return jsonify({'results': results})
+
+
+@app.route('/api/creators/<int:creator_id>/videos', methods=['GET'])
+def api_get_creator_videos(creator_id: int):
+    """Get video grid data for a creator."""
+    creator = db.get_creator_by_id(creator_id)
+    if not creator:
+        return jsonify({'error': 'Creator not found'}), 404
+
+    sort_by = request.args.get('sort', 'uploaded_at')
+    sort_dir = request.args.get('dir', 'DESC')
+    limit = request.args.get('limit', 100, type=int)
+
+    videos = db.get_creator_video_stats(creator_id, order_by=sort_by, order_dir=sort_dir, limit=limit)
+
+    return jsonify({
+        'videos': [{
+            'id': v.youtube_video_id,
+            'title': v.title,
+            'thumbnail_url': v.thumbnail_url,
+            'views': v.views,
+            'likes': v.likes,
+            'comments': v.comments,
+            'duration_seconds': v.duration_seconds,
+            'uploaded_at': v.uploaded_at.isoformat() if v.uploaded_at else None,
+            'youtube_url': f'https://youtube.com/shorts/{v.youtube_video_id}'
+        } for v in videos],
+        'total': len(videos)
+    })
+
+
+@app.route('/api/creators/<int:creator_id>/views-trend', methods=['GET'])
+def api_get_views_trend(creator_id: int):
+    """Get views trend data for Chart.js."""
+    creator = db.get_creator_by_id(creator_id)
+    if not creator:
+        return jsonify({'error': 'Creator not found'}), 404
+
+    days = request.args.get('days', 30, type=int)
+    trend = db.get_views_trend(creator_id, days=days)
+
+    return jsonify({
+        'labels': [d['date'] for d in trend],
+        'data': [d['views'] for d in trend]
+    })
+
+
+@app.route('/api/global-stats', methods=['GET'])
+def api_get_global_stats():
+    """Get global statistics across all creators."""
+    global_stats = db.get_global_stats()
+    top_video = db.get_top_video()
+
+    return jsonify({
+        'total_views': global_stats['total_views'],
+        'total_videos': global_stats['total_videos'],
+        'avg_views': global_stats['avg_views'],
+        'top_video': {
+            'id': top_video.youtube_video_id,
+            'title': top_video.title,
+            'thumbnail_url': top_video.thumbnail_url,
+            'views': top_video.views,
+            'youtube_url': f'https://youtube.com/shorts/{top_video.youtube_video_id}'
+        } if top_video else None
+    })
 
 
 # ========== OAuth Flow ==========

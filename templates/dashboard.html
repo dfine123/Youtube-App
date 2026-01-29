@@ -7,12 +7,115 @@
     <h1 class="h3 mb-0">
         <i class="bi bi-grid-1x2-fill me-2"></i>Dashboard
     </h1>
-    <div class="text-muted small">
-        Last updated: {{ now.strftime('%Y-%m-%d %H:%M UTC') }}
+    <div class="d-flex align-items-center gap-2">
+        <button class="btn btn-sm btn-outline-secondary" onclick="refreshAllStats()" id="refreshStatsBtn">
+            <i class="bi bi-arrow-repeat me-1"></i>Refresh Stats
+        </button>
+        <span class="text-muted small">{{ now.strftime('%Y-%m-%d %H:%M UTC') }}</span>
     </div>
 </div>
 
-<!-- Stats Overview -->
+<!-- Primary Stats Row -->
+<div class="row g-3 mb-4">
+    <div class="col-6 col-lg-3">
+        <div class="card stat-card h-100 border-0 bg-gradient-primary">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h6 class="text-white-50 mb-1 small text-uppercase">Total Views</h6>
+                        <h2 class="mb-0 text-white">{{ "{:,}".format(global_stats.total_views) }}</h2>
+                    </div>
+                    <div class="align-self-center">
+                        <i class="bi bi-eye-fill text-white-50" style="font-size: 2rem;"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-6 col-lg-3">
+        <div class="card stat-card h-100 border-0 bg-gradient-success">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h6 class="text-white-50 mb-1 small text-uppercase">Total Uploads</h6>
+                        <h2 class="mb-0 text-white">{{ global_stats.total_videos }}</h2>
+                    </div>
+                    <div class="align-self-center">
+                        <i class="bi bi-cloud-upload-fill text-white-50" style="font-size: 2rem;"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-6 col-lg-3">
+        <div class="card stat-card h-100 border-0 bg-gradient-info">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h6 class="text-white-50 mb-1 small text-uppercase">Shorts Ready</h6>
+                        <h2 class="mb-0 text-white">{{ total_shorts }}</h2>
+                    </div>
+                    <div class="align-self-center">
+                        <i class="bi bi-film text-white-50" style="font-size: 2rem;"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-6 col-lg-3">
+        <div class="card stat-card h-100 border-0 bg-gradient-warning">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h6 class="text-dark-50 mb-1 small text-uppercase">Today's Progress</h6>
+                        <h2 class="mb-0">{{ total_uploads_today }}<span class="fs-5 text-muted">/{{ total_quota_target }}</span></h2>
+                    </div>
+                    <div class="align-self-center">
+                        <i class="bi bi-calendar-check text-dark-50" style="font-size: 2rem;"></i>
+                    </div>
+                </div>
+                <div class="progress mt-2" style="height: 6px;">
+                    <div class="progress-bar bg-dark" style="width: {{ (total_uploads_today / total_quota_target * 100) if total_quota_target > 0 else 0 }}%"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Top Performing Short -->
+{% if top_video %}
+<div class="card mb-4 border-0" style="background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);">
+    <div class="card-body">
+        <div class="row align-items-center">
+            <div class="col-auto">
+                <a href="https://youtube.com/shorts/{{ top_video.youtube_video_id }}" target="_blank">
+                    <img src="{{ top_video.thumbnail_url }}" alt="Top video thumbnail"
+                         class="rounded" style="width: 120px; height: 213px; object-fit: cover;">
+                </a>
+            </div>
+            <div class="col">
+                <div class="d-flex align-items-center mb-2">
+                    <span class="badge bg-warning text-dark me-2"><i class="bi bi-trophy-fill me-1"></i>Top Performing</span>
+                </div>
+                <h5 class="text-white mb-2">{{ top_video.title[:80] }}{% if top_video.title|length > 80 %}...{% endif %}</h5>
+                <div class="d-flex gap-4 text-white-50">
+                    <span><i class="bi bi-eye me-1"></i>{{ "{:,}".format(top_video.views) }} views</span>
+                    <span><i class="bi bi-hand-thumbs-up me-1"></i>{{ "{:,}".format(top_video.likes) }} likes</span>
+                    <span><i class="bi bi-chat me-1"></i>{{ "{:,}".format(top_video.comments) }} comments</span>
+                </div>
+                <a href="https://youtube.com/shorts/{{ top_video.youtube_video_id }}" target="_blank" class="btn btn-sm btn-outline-light mt-3">
+                    <i class="bi bi-play-fill me-1"></i>Watch on YouTube
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Secondary Stats Row -->
 <div class="row g-3 mb-4">
     <div class="col-sm-6 col-lg-3">
         <div class="card stat-card h-100">
@@ -35,31 +138,12 @@
             <div class="card-body">
                 <div class="d-flex justify-content-between">
                     <div>
-                        <h6 class="text-muted mb-2">Shorts Ready</h6>
-                        <h2 class="mb-0">{{ total_shorts }}</h2>
+                        <h6 class="text-muted mb-2">Avg Views/Video</h6>
+                        <h2 class="mb-0">{{ "{:,.0f}".format(global_stats.avg_views) }}</h2>
                     </div>
                     <div class="align-self-center">
-                        <i class="bi bi-film text-info" style="font-size: 2rem;"></i>
+                        <i class="bi bi-graph-up text-success" style="font-size: 2rem;"></i>
                     </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <div class="col-sm-6 col-lg-3">
-        <div class="card stat-card h-100">
-            <div class="card-body">
-                <div class="d-flex justify-content-between">
-                    <div>
-                        <h6 class="text-muted mb-2">Today's Uploads</h6>
-                        <h2 class="mb-0">{{ total_uploads_today }}<span class="text-muted fs-5">/{{ total_quota_target }}</span></h2>
-                    </div>
-                    <div class="align-self-center">
-                        <i class="bi bi-cloud-upload text-success" style="font-size: 2rem;"></i>
-                    </div>
-                </div>
-                <div class="progress mt-2 progress-thin">
-                    <div class="progress-bar bg-success" style="width: {{ (total_uploads_today / total_quota_target * 100) if total_quota_target > 0 else 0 }}%"></div>
                 </div>
             </div>
         </div>
@@ -81,9 +165,25 @@
             </div>
         </div>
     </div>
+
+    <div class="col-sm-6 col-lg-3">
+        <div class="card stat-card h-100">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h6 class="text-muted mb-2">Active Creators</h6>
+                        <h2 class="mb-0">{{ creators|selectattr('active')|list|length }}</h2>
+                    </div>
+                    <div class="align-self-center">
+                        <i class="bi bi-person-check-fill text-info" style="font-size: 2rem;"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 </div>
 
-<!-- Creators Table -->
+<!-- Creators Grid -->
 <div class="card">
     <div class="card-header d-flex justify-content-between align-items-center">
         <h5 class="mb-0">
@@ -93,81 +193,104 @@
             <i class="bi bi-plus me-1"></i>Add Creator
         </a>
     </div>
-    <div class="card-body p-0">
+    <div class="card-body">
         {% if creators %}
-        <div class="table-responsive">
-            <table class="table table-hover mb-0">
-                <thead>
-                    <tr>
-                        <th>Creator</th>
-                        <th class="text-center">Shorts Ready</th>
-                        <th class="text-center">Posts/Day</th>
-                        <th class="text-center">Runway</th>
-                        <th class="text-center">Today</th>
-                        <th>Last Upload</th>
-                        <th class="text-center">Status</th>
-                        <th class="text-end">Actions</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for creator in creators %}
-                    <tr class="creator-row" onclick="window.location='{{ url_for('creator_detail', creator_id=creator.id) }}'">
-                        <td>
+        <div class="row g-3">
+            {% for creator in creators %}
+            <div class="col-md-6 col-xl-4">
+                <div class="card creator-card h-100 {% if not creator.active %}opacity-75{% endif %}"
+                     onclick="window.location='{{ url_for('creator_detail', creator_id=creator.id) }}'">
+                    <div class="card-body">
+                        <!-- Header -->
+                        <div class="d-flex justify-content-between align-items-start mb-3">
                             <div class="d-flex align-items-center">
-                                <div class="status-indicator bg-{{ creator.status_color }} me-2"></div>
+                                <div class="creator-avatar me-2">
+                                    <div class="status-dot bg-{{ creator.status_color }}"></div>
+                                    <i class="bi bi-person-circle" style="font-size: 2.5rem; color: #6c757d;"></i>
+                                </div>
                                 <div>
-                                    <strong>{{ creator.name }}</strong>
-                                    {% if not creator.active %}
-                                    <span class="badge bg-secondary ms-1">Inactive</span>
-                                    {% endif %}
+                                    <h6 class="mb-0">{{ creator.name }}</h6>
+                                    <small class="text-muted">{{ creator.video_count }} videos</small>
                                 </div>
                             </div>
-                        </td>
-                        <td class="text-center">
-                            <span class="fw-bold">{{ creator.shorts_ready }}</span>
-                        </td>
-                        <td class="text-center">{{ creator.posts_per_day }}</td>
-                        <td class="text-center">
-                            <span class="badge runway-badge bg-{{ creator.runway_color }}">
-                                {{ creator.runway_emoji }} {{ creator.days_runway }} days
-                            </span>
-                        </td>
-                        <td class="text-center">
-                            <span class="{% if creator.uploads_today >= creator.posts_per_day %}text-success{% endif %}">
-                                {{ creator.uploads_today }}/{{ creator.posts_per_day }}
-                            </span>
-                            {% if creator.uploads_today >= creator.posts_per_day %}
-                            <i class="bi bi-check-circle-fill text-success ms-1"></i>
-                            {% endif %}
-                        </td>
-                        <td>
-                            <span class="text-muted small">{{ creator.last_upload_str }}</span>
-                        </td>
-                        <td class="text-center">
                             {% if creator.status == 'active' %}
-                            <span class="badge bg-success">Active</span>
+                            <span class="badge bg-success-subtle text-success">Active</span>
                             {% elif creator.status == 'needs_auth' %}
-                            <span class="badge bg-warning">Needs Auth</span>
+                            <span class="badge bg-warning-subtle text-warning">Needs Auth</span>
                             {% elif creator.status == 'waiting' %}
-                            <span class="badge bg-info">Waiting</span>
+                            <span class="badge bg-info-subtle text-info">Waiting</span>
                             {% else %}
-                            <span class="badge bg-secondary">Inactive</span>
+                            <span class="badge bg-secondary-subtle text-secondary">Inactive</span>
                             {% endif %}
-                        </td>
-                        <td class="text-end" onclick="event.stopPropagation();">
-                            <div class="btn-group btn-group-sm">
-                                <button class="btn btn-outline-primary" onclick="uploadCreator({{ creator.id }})" {% if not creator.can_upload %}disabled{% endif %} title="{{ creator.upload_reason }}">
-                                    <i class="bi bi-upload"></i>
-                                </button>
-                                <a href="{{ url_for('creator_detail', creator_id=creator.id) }}" class="btn btn-outline-secondary">
-                                    <i class="bi bi-eye"></i>
-                                </a>
+                        </div>
+
+                        <!-- Stats Grid -->
+                        <div class="row g-2 mb-3">
+                            <div class="col-6">
+                                <div class="mini-stat">
+                                    <div class="mini-stat-value">{{ "{:,}".format(creator.total_views) }}</div>
+                                    <div class="mini-stat-label">Total Views</div>
+                                </div>
                             </div>
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
+                            <div class="col-6">
+                                <div class="mini-stat">
+                                    <div class="mini-stat-value {% if creator.views_7d > 0 %}text-success{% endif %}">
+                                        {% if creator.views_7d > 0 %}+{% endif %}{{ "{:,}".format(creator.views_7d) }}
+                                    </div>
+                                    <div class="mini-stat-label">Views (7d)</div>
+                                </div>
+                            </div>
+                            <div class="col-6">
+                                <div class="mini-stat">
+                                    <div class="mini-stat-value">{{ creator.shorts_ready }}</div>
+                                    <div class="mini-stat-label">Ready to Post</div>
+                                </div>
+                            </div>
+                            <div class="col-6">
+                                <div class="mini-stat">
+                                    <span class="badge runway-badge bg-{{ creator.runway_color }}">
+                                        {{ creator.runway_emoji }} {{ creator.days_runway }}d
+                                    </span>
+                                    <div class="mini-stat-label">Runway</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Progress & Actions -->
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <span class="small text-muted">Today: {{ creator.uploads_today }}/{{ creator.posts_per_day }}</span>
+                            <span class="small text-muted">{{ creator.last_upload_str }}</span>
+                        </div>
+                        <div class="progress mb-3" style="height: 4px;">
+                            <div class="progress-bar {% if creator.uploads_today >= creator.posts_per_day %}bg-success{% else %}bg-primary{% endif %}"
+                                 style="width: {{ (creator.uploads_today / creator.posts_per_day * 100) if creator.posts_per_day > 0 else 0 }}%"></div>
+                        </div>
+
+                        <!-- Quick Actions -->
+                        <div class="d-flex gap-2" onclick="event.stopPropagation();">
+                            <button class="btn btn-sm btn-primary flex-grow-1"
+                                    onclick="uploadCreator({{ creator.id }})"
+                                    {% if not creator.can_upload %}disabled{% endif %}
+                                    title="{{ creator.upload_reason }}">
+                                <i class="bi bi-upload me-1"></i>Upload
+                            </button>
+                            <button class="btn btn-sm btn-outline-secondary"
+                                    onclick="refreshCreatorStats({{ creator.id }})"
+                                    title="Refresh YouTube Stats">
+                                <i class="bi bi-arrow-repeat"></i>
+                            </button>
+                            <a href="https://www.youtube.com/channel/{{ creator.channel_id }}"
+                               target="_blank" class="btn btn-sm btn-outline-danger" title="View Channel">
+                                <i class="bi bi-youtube"></i>
+                            </a>
+                        </div>
+                    </div>
+                    <div class="card-footer bg-transparent border-0 pt-0">
+                        <small class="text-muted">Stats updated: {{ creator.stats_last_updated }}</small>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
         </div>
         {% else %}
         <div class="text-center py-5">
@@ -181,43 +304,167 @@
         {% endif %}
     </div>
 </div>
-
-<!-- Quick Summary Cards for Mobile -->
-<div class="row g-3 mt-4 d-md-none">
-    {% for creator in creators %}
-    <div class="col-12">
-        <div class="card creator-card" onclick="window.location='{{ url_for('creator_detail', creator_id=creator.id) }}'">
-            <div class="card-body">
-                <div class="d-flex justify-content-between align-items-start mb-2">
-                    <div>
-                        <h6 class="mb-0">{{ creator.name }}</h6>
-                        <small class="text-muted">{{ creator.shorts_ready }} shorts ready</small>
-                    </div>
-                    <span class="badge bg-{{ creator.status_color }}">{{ creator.status }}</span>
-                </div>
-                <div class="d-flex justify-content-between align-items-center">
-                    <span class="badge runway-badge bg-{{ creator.runway_color }}">
-                        {{ creator.runway_emoji }} {{ creator.days_runway }} days
-                    </span>
-                    <span class="small">{{ creator.uploads_today }}/{{ creator.posts_per_day }} today</span>
-                </div>
-                <div class="progress mt-2 progress-thin">
-                    <div class="progress-bar bg-primary" style="width: {{ (creator.uploads_today / creator.posts_per_day * 100) if creator.posts_per_day > 0 else 0 }}%"></div>
-                </div>
-            </div>
-        </div>
-    </div>
-    {% endfor %}
-</div>
 {% endblock %}
 
 {% block extra_css %}
 <style>
-    .creator-row {
+    .bg-gradient-primary {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    }
+    .bg-gradient-success {
+        background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+    }
+    .bg-gradient-info {
+        background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+    }
+    .bg-gradient-warning {
+        background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+    }
+    .bg-gradient-warning h2, .bg-gradient-warning .fs-5 {
+        color: #fff !important;
+    }
+    .bg-gradient-warning h6 {
+        color: rgba(255,255,255,0.7) !important;
+    }
+    .bg-gradient-warning i {
+        color: rgba(255,255,255,0.5) !important;
+    }
+    .text-white-50 {
+        color: rgba(255,255,255,0.5) !important;
+    }
+
+    .creator-card {
         cursor: pointer;
+        transition: all 0.2s ease;
+        border: 1px solid rgba(255,255,255,0.1);
     }
-    .creator-row:hover {
-        background-color: rgba(88, 166, 255, 0.05) !important;
+    .creator-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        border-color: rgba(88, 166, 255, 0.3);
     }
+
+    .creator-avatar {
+        position: relative;
+    }
+    .status-dot {
+        position: absolute;
+        bottom: 2px;
+        right: 2px;
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        border: 2px solid #1e1e1e;
+    }
+
+    .mini-stat {
+        text-align: center;
+        padding: 8px;
+        background: rgba(255,255,255,0.03);
+        border-radius: 8px;
+    }
+    .mini-stat-value {
+        font-size: 1.1rem;
+        font-weight: 600;
+    }
+    .mini-stat-label {
+        font-size: 0.7rem;
+        color: #6c757d;
+        text-transform: uppercase;
+    }
+
+    .bg-success-subtle { background-color: rgba(25, 135, 84, 0.2) !important; }
+    .bg-warning-subtle { background-color: rgba(255, 193, 7, 0.2) !important; }
+    .bg-info-subtle { background-color: rgba(13, 202, 240, 0.2) !important; }
+    .bg-secondary-subtle { background-color: rgba(108, 117, 125, 0.2) !important; }
 </style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function uploadCreator(creatorId) {
+    if (!confirm('Start upload for this creator?')) return;
+
+    fetch(`/api/upload/${creatorId}`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({limit: 1})
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.upload_id) {
+            showToast('Upload started', 'success');
+            // Could redirect to upload progress page
+        } else {
+            showToast(data.error || 'Upload failed', 'danger');
+        }
+    })
+    .catch(err => showToast('Error: ' + err, 'danger'));
+}
+
+function refreshCreatorStats(creatorId) {
+    const btn = event.target.closest('button');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+
+    fetch(`/api/creators/${creatorId}/refresh-video-stats`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({force: true})
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            showToast(data.message || 'Stats refreshed', 'success');
+            setTimeout(() => location.reload(), 1000);
+        } else {
+            showToast(data.error || 'Refresh failed', 'danger');
+            btn.disabled = false;
+            btn.innerHTML = '<i class="bi bi-arrow-repeat"></i>';
+        }
+    })
+    .catch(err => {
+        showToast('Error: ' + err, 'danger');
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-arrow-repeat"></i>';
+    });
+}
+
+function refreshAllStats() {
+    const btn = document.getElementById('refreshStatsBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Refreshing...';
+
+    fetch('/api/refresh-all-video-stats', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({force: true})
+    })
+    .then(r => r.json())
+    .then(data => {
+        const successful = data.results.filter(r => r.success).length;
+        showToast(`Refreshed stats for ${successful} creators`, 'success');
+        setTimeout(() => location.reload(), 1500);
+    })
+    .catch(err => {
+        showToast('Error: ' + err, 'danger');
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-arrow-repeat me-1"></i>Refresh Stats';
+    });
+}
+
+function showToast(message, type = 'info') {
+    const toast = document.createElement('div');
+    toast.className = `toast align-items-center text-white bg-${type} border-0 show position-fixed`;
+    toast.style.cssText = 'bottom: 20px; right: 20px; z-index: 9999;';
+    toast.innerHTML = `
+        <div class="d-flex">
+            <div class="toast-body">${message}</div>
+            <button type="button" class="btn-close btn-close-white me-2 m-auto" onclick="this.parentElement.parentElement.remove()"></button>
+        </div>
+    `;
+    document.body.appendChild(toast);
+    setTimeout(() => toast.remove(), 4000);
+}
+</script>
 {% endblock %}
