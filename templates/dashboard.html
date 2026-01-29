@@ -256,6 +256,18 @@
                             </div>
                         </div>
 
+                        <!-- Next Post Time -->
+                        <div class="next-post-banner mb-3 p-2 rounded {% if creator.next_post_status == 'ready' %}bg-success-subtle{% elif creator.next_post_status == 'waiting' %}bg-info-subtle{% elif creator.next_post_status == 'quota_met' %}bg-warning-subtle{% else %}bg-secondary-subtle{% endif %}">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <span class="small fw-semibold">
+                                    <i class="bi bi-clock me-1"></i>Next Post:
+                                </span>
+                                <span class="small fw-bold {% if creator.next_post_status == 'ready' %}text-success{% elif creator.next_post_status == 'waiting' %}text-info{% elif creator.next_post_status == 'quota_met' %}text-warning{% else %}text-secondary{% endif %}">
+                                    {{ creator.next_post_str }}
+                                </span>
+                            </div>
+                        </div>
+
                         <!-- Progress & Actions -->
                         <div class="d-flex justify-content-between align-items-center mb-2">
                             <span class="small text-muted">Today: {{ creator.uploads_today }}/{{ creator.posts_per_day }}</span>

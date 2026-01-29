@@ -72,6 +72,70 @@ upload_logs = {}
 
 # ========== Helper Functions ==========
 
+def get_next_post_info(creator: Creator, shorts_ready: int) -> dict:
+    """
+    Calculate when the next post can/will be uploaded.
+
+    Returns dict with:
+        - next_post_str: Human readable string
+        - next_post_countdown: Minutes until next post (or -1 if not applicable)
+        - next_post_status: 'ready', 'waiting', 'quota_met', 'no_content'
+    """
+    from datetime import timedelta
+
+    now = datetime.utcnow()
+
+    # Check if no content remaining
+    if shorts_ready <= 0:
+        return {
+            'next_post_str': 'No content remaining',
+            'next_post_countdown': -1,
+            'next_post_status': 'no_content'
+        }
+
+    # Check if daily quota is met
+    if creator.uploads_today >= creator.posts_per_day:
+        # Calculate tomorrow's start time (assume 8 AM UTC for simplicity)
+        tomorrow = now.date() + timedelta(days=1)
+        next_time = datetime.combine(tomorrow, datetime.min.time().replace(hour=8))
+        hours_until = (next_time - now).total_seconds() / 3600
+
+        return {
+            'next_post_str': f'Tomorrow ~{int(hours_until)}h',
+            'next_post_countdown': int(hours_until * 60),
+            'next_post_status': 'quota_met'
+        }
+
+    # Check 2-hour spacing rule
+    if creator.last_upload_at:
+        time_since_last = (now - creator.last_upload_at).total_seconds()
+        two_hours = 2 * 60 * 60  # 2 hours in seconds
+
+        if time_since_last < two_hours:
+            remaining_seconds = two_hours - time_since_last
+            remaining_minutes = int(remaining_seconds / 60)
+
+            if remaining_minutes >= 60:
+                hours = remaining_minutes // 60
+                mins = remaining_minutes % 60
+                countdown_str = f'{hours}h {mins}m' if mins > 0 else f'{hours}h'
+            else:
+                countdown_str = f'{remaining_minutes}m'
+
+            return {
+                'next_post_str': f'In {countdown_str}',
+                'next_post_countdown': remaining_minutes,
+                'next_post_status': 'waiting'
+            }
+
+    # Ready to post now
+    return {
+        'next_post_str': 'Ready now',
+        'next_post_countdown': 0,
+        'next_post_status': 'ready'
+    }
+
+
 def get_creator_status(creator: Creator) -> dict:
     """Get comprehensive status for a creator."""
     stats = db.get_content_stats(creator.id)
@@ -110,6 +174,9 @@ def get_creator_status(creator: Creator) -> dict:
         runway_color = 'dark'
         runway_emoji = '⚫'
 
+    # Calculate next post time
+    next_post = get_next_post_info(creator, shorts_ready)
+
     return {
         'id': creator.id,
         'name': creator.name,
@@ -130,7 +197,10 @@ def get_creator_status(creator: Creator) -> dict:
         'status_color': status_color,
         'can_upload': can_upload,
         'upload_reason': reason,
-        'created_at': creator.created_at
+        'created_at': creator.created_at,
+        'next_post_str': next_post['next_post_str'],
+        'next_post_countdown': next_post['next_post_countdown'],
+        'next_post_status': next_post['next_post_status']
     }
 
 

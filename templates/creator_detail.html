@@ -62,6 +62,49 @@
     </div>
 </div>
 
+<!-- Next Post Banner -->
+<div class="card mb-4 border-0 next-post-card {% if creator.next_post_status == 'ready' %}bg-success{% elif creator.next_post_status == 'waiting' %}bg-info{% elif creator.next_post_status == 'quota_met' %}bg-warning{% else %}bg-secondary{% endif %}">
+    <div class="card-body py-3">
+        <div class="row align-items-center">
+            <div class="col-auto">
+                <div class="next-post-icon">
+                    {% if creator.next_post_status == 'ready' %}
+                    <i class="bi bi-check-circle-fill"></i>
+                    {% elif creator.next_post_status == 'waiting' %}
+                    <i class="bi bi-hourglass-split"></i>
+                    {% elif creator.next_post_status == 'quota_met' %}
+                    <i class="bi bi-calendar-check"></i>
+                    {% else %}
+                    <i class="bi bi-exclamation-circle"></i>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="col">
+                <div class="text-white">
+                    <span class="fw-bold">Next Post:</span>
+                    <span class="ms-2 fs-5">{{ creator.next_post_str }}</span>
+                </div>
+                <small class="text-white-50">
+                    {% if creator.next_post_status == 'ready' %}
+                    Content is ready and upload spacing met
+                    {% elif creator.next_post_status == 'waiting' %}
+                    Waiting for 2-hour spacing between uploads
+                    {% elif creator.next_post_status == 'quota_met' %}
+                    Daily upload quota ({{ creator.posts_per_day }}/day) reached
+                    {% else %}
+                    Add more content to the queue
+                    {% endif %}
+                </small>
+            </div>
+            <div class="col-auto">
+                <span class="badge bg-white text-dark fs-6">
+                    {{ creator.uploads_today }}/{{ creator.posts_per_day }} today
+                </span>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Video Stats Section -->
 <div class="row g-3 mb-4">
     <div class="col-6 col-lg-3">
@@ -543,6 +586,15 @@
     }
     .video-info .badge {
         font-size: 0.65rem;
+    }
+
+    .next-post-card {
+        box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+    }
+    .next-post-icon {
+        font-size: 2.5rem;
+        color: rgba(255,255,255,0.9);
+        line-height: 1;
     }
 </style>
 {% endblock %}
