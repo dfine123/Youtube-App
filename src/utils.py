@@ -35,6 +35,19 @@ def _get_credentials():
         return EmptyCredentials()
 
 
+def reload_credentials():
+    """
+    Reload the credentials module to pick up any changes.
+    Call this after saving new credentials via the web UI.
+    """
+    import importlib
+    import sys
+
+    if 'credentials' in sys.modules:
+        importlib.reload(sys.modules['credentials'])
+        console.print("[green]Credentials module reloaded[/green]")
+
+
 def get_config() -> Dict[str, Any]:
     """Load configuration from config.yaml and credentials.py."""
     config_path = PROJECT_ROOT / "config.yaml"

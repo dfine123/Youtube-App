@@ -75,44 +75,71 @@
         </div>
     </div>
 
-    <!-- Google Cloud Status -->
+    <!-- Google API Credentials -->
     <div class="col-lg-6 mb-4">
         <div class="card">
-            <div class="card-header">
-                <h5 class="mb-0"><i class="bi bi-google me-2"></i>Google Cloud Connection</h5>
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="bi bi-google me-2"></i>Google API Credentials</h5>
+                {% if google_configured %}
+                <span class="badge bg-success">Configured</span>
+                {% else %}
+                <span class="badge bg-danger">Not Configured</span>
+                {% endif %}
             </div>
             <div class="card-body">
-                <div class="list-group list-group-flush">
-                    <div class="list-group-item d-flex justify-content-between align-items-center">
-                        <span>
-                            <i class="bi bi-key me-2"></i>OAuth Credentials
-                        </span>
-                        {% if google_configured %}
-                        <span class="badge bg-success">Configured</span>
-                        {% else %}
-                        <span class="badge bg-danger">Not Configured</span>
-                        {% endif %}
-                    </div>
-                    <div class="list-group-item d-flex justify-content-between align-items-center">
-                        <span>
-                            <i class="bi bi-file-earmark-code me-2"></i>Config File
-                        </span>
-                        <code class="small">{{ config_path }}</code>
-                    </div>
-                </div>
-
                 {% if not google_configured %}
-                <div class="alert alert-warning mt-3 mb-0">
+                <div class="alert alert-warning mb-3">
                     <h6 class="alert-heading"><i class="bi bi-exclamation-triangle me-1"></i>Setup Required</h6>
-                    <p class="small mb-2">To use this app, you need to configure Google OAuth credentials:</p>
+                    <p class="small mb-2">To use this app, you need Google OAuth credentials:</p>
                     <ol class="small mb-0">
                         <li>Go to <a href="https://console.cloud.google.com/" target="_blank">Google Cloud Console</a></li>
-                        <li>Create a new project or select existing</li>
-                        <li>Enable YouTube Data API v3, Google Sheets API, and Google Drive API</li>
-                        <li>Create OAuth 2.0 credentials (Web application)</li>
-                        <li>Add redirect URI: <code>http://localhost:5000/oauth/callback</code></li>
-                        <li>Open <code>credentials.py</code> and paste your Client ID and Client Secret</li>
+                        <li>Create a project, enable YouTube Data API v3, Google Sheets API, Google Drive API</li>
+                        <li>Create OAuth 2.0 credentials (Web application type)</li>
+                        <li>Add redirect URI: <code id="redirectUri">Loading...</code></li>
+                        <li>Copy your Client ID and Client Secret below</li>
                     </ol>
+                </div>
+                {% endif %}
+
+                <form id="credentialsForm" onsubmit="return saveCredentials(event)">
+                    <div class="mb-3">
+                        <label class="form-label">Google Client ID</label>
+                        <input type="text" class="form-control font-monospace" id="googleClientId"
+                               placeholder="xxxxx.apps.googleusercontent.com"
+                               value="{{ current_client_id or '' }}">
+                        <div class="form-text">From Google Cloud Console > APIs & Services > Credentials</div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Google Client Secret</label>
+                        <div class="input-group">
+                            <input type="password" class="form-control font-monospace" id="googleClientSecret"
+                                   placeholder="GOCSPX-xxxxx"
+                                   value="{{ current_client_secret_masked or '' }}">
+                            <button class="btn btn-outline-secondary" type="button" onclick="toggleSecretVisibility()">
+                                <i class="bi bi-eye" id="secretToggleIcon"></i>
+                            </button>
+                        </div>
+                        <div class="form-text">Keep this secret! Never share it publicly.</div>
+                    </div>
+
+                    <div class="d-flex gap-2">
+                        <button type="submit" class="btn btn-primary" id="saveCredentialsBtn">
+                            <i class="bi bi-save me-1"></i>Save Credentials
+                        </button>
+                        {% if google_configured %}
+                        <button type="button" class="btn btn-outline-danger" onclick="clearCredentials()">
+                            <i class="bi bi-trash me-1"></i>Clear
+                        </button>
+                        {% endif %}
+                    </div>
+                </form>
+
+                {% if google_configured %}
+                <hr class="my-3">
+                <div class="small text-muted">
+                    <i class="bi bi-check-circle text-success me-1"></i>
+                    Credentials are saved and ready to use. You can now add creators.
                 </div>
                 {% endif %}
             </div>
@@ -197,56 +224,106 @@
     </div>
 </div>
 
-<!-- Credentials Reference -->
-<div class="card">
-    <div class="card-header">
-        <h5 class="mb-0"><i class="bi bi-key me-2"></i>Credentials Configuration</h5>
-    </div>
-    <div class="card-body">
-        <p class="text-muted small mb-3">Edit <code>credentials.py</code> to configure your API keys:</p>
-        <div class="table-responsive">
-            <table class="table table-sm small">
-                <thead>
-                    <tr>
-                        <th>Variable</th>
-                        <th>Description</th>
-                        <th>Required</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr>
-                        <td><code>GOOGLE_CLIENT_ID</code></td>
-                        <td>Google OAuth Client ID from Cloud Console</td>
-                        <td><i class="bi bi-check text-success"></i></td>
-                    </tr>
-                    <tr>
-                        <td><code>GOOGLE_CLIENT_SECRET</code></td>
-                        <td>Google OAuth Client Secret from Cloud Console</td>
-                        <td><i class="bi bi-check text-success"></i></td>
-                    </tr>
-                    <tr>
-                        <td><code>ENCRYPTION_KEY</code></td>
-                        <td>Fernet key for token encryption (auto-generated if empty)</td>
-                        <td><span class="text-muted">Auto</span></td>
-                    </tr>
-                    <tr>
-                        <td><code>SESSION_SECRET</code></td>
-                        <td>Flask session secret (auto-generated if empty)</td>
-                        <td><span class="text-muted">Auto</span></td>
-                    </tr>
-                </tbody>
-            </table>
-        </div>
-        <div class="alert alert-info small mt-3 mb-0">
-            <i class="bi bi-info-circle me-1"></i>
-            <strong>Tip:</strong> Copy <code>credentials_example.py</code> to <code>credentials.py</code> and fill in your values. The ENCRYPTION_KEY and SESSION_SECRET will be auto-generated on first run if left empty.
-        </div>
-    </div>
-</div>
 {% endblock %}
 
 {% block extra_js %}
 <script>
+    // Show the redirect URI on page load
+    document.addEventListener('DOMContentLoaded', function() {
+        const redirectUriEl = document.getElementById('redirectUri');
+        if (redirectUriEl) {
+            // Build the redirect URI
+            let uri = window.location.origin + '/oauth/callback';
+            // Force HTTPS for non-localhost
+            if (!uri.startsWith('http://localhost') && !uri.startsWith('http://127.0.0.1')) {
+                uri = uri.replace('http://', 'https://');
+            }
+            redirectUriEl.textContent = uri;
+        }
+    });
+
+    // Toggle password visibility
+    function toggleSecretVisibility() {
+        const input = document.getElementById('googleClientSecret');
+        const icon = document.getElementById('secretToggleIcon');
+        if (input.type === 'password') {
+            input.type = 'text';
+            icon.className = 'bi bi-eye-slash';
+        } else {
+            input.type = 'password';
+            icon.className = 'bi bi-eye';
+        }
+    }
+
+    // Save Google credentials
+    async function saveCredentials(event) {
+        event.preventDefault();
+
+        const clientId = document.getElementById('googleClientId').value.trim();
+        const clientSecret = document.getElementById('googleClientSecret').value.trim();
+
+        if (!clientId || !clientSecret) {
+            showToast('Error', 'Both Client ID and Client Secret are required', 'error');
+            return false;
+        }
+
+        const btn = document.getElementById('saveCredentialsBtn');
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Saving...';
+
+        try {
+            const response = await fetch('/api/credentials', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    client_id: clientId,
+                    client_secret: clientSecret
+                })
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                showToast('Credentials Saved', 'Google API credentials saved successfully!', 'success');
+                // Reload page to update UI
+                setTimeout(() => location.reload(), 1500);
+            } else {
+                throw new Error(data.error || 'Failed to save credentials');
+            }
+        } catch (error) {
+            showToast('Error', error.message, 'error');
+            btn.disabled = false;
+            btn.innerHTML = '<i class="bi bi-save me-1"></i>Save Credentials';
+        }
+
+        return false;
+    }
+
+    // Clear credentials
+    async function clearCredentials() {
+        if (!confirm('Are you sure you want to clear your Google API credentials?')) {
+            return;
+        }
+
+        try {
+            const response = await fetch('/api/credentials', {
+                method: 'DELETE'
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                showToast('Credentials Cleared', 'Google API credentials have been removed', 'success');
+                setTimeout(() => location.reload(), 1500);
+            } else {
+                throw new Error(data.error || 'Failed to clear credentials');
+            }
+        } catch (error) {
+            showToast('Error', error.message, 'error');
+        }
+    }
+
+    // Save default settings
     async function saveSettings(event) {
         event.preventDefault();
 

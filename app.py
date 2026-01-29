@@ -27,7 +27,8 @@ from src.downloader import DriveDownloader
 from src.metadata import generate_shorts_metadata
 from src.utils import (
     get_config, get_runway_emoji, format_duration,
-    time_since, setup_logging, PROJECT_ROOT, get_session_secret
+    time_since, setup_logging, PROJECT_ROOT, get_session_secret,
+    reload_credentials
 )
 
 # Initialize Flask app
@@ -252,9 +253,21 @@ def settings_page():
     # Check Google Cloud connection
     google_configured = bool(config['google']['client_id'] and config['google']['client_secret'])
 
+    # Get current credentials for display (masked)
+    current_client_id = config['google'].get('client_id', '')
+    current_client_secret = config['google'].get('client_secret', '')
+
+    # Mask the client secret for display
+    if current_client_secret and len(current_client_secret) > 8:
+        current_client_secret_masked = current_client_secret[:4] + '*' * (len(current_client_secret) - 8) + current_client_secret[-4:]
+    else:
+        current_client_secret_masked = ''
+
     return render_template('settings.html',
         config=config,
         google_configured=google_configured,
+        current_client_id=current_client_id,
+        current_client_secret_masked=current_client_secret_masked,
         config_path=str(PROJECT_ROOT / 'config.yaml')
     )
 
@@ -888,6 +901,110 @@ def api_update_settings():
         return jsonify({'success': True, 'config': config})
 
     except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/credentials', methods=['POST'])
+def api_save_credentials():
+    """Save Google API credentials to credentials.py file."""
+    data = request.get_json()
+
+    client_id = data.get('client_id', '').strip()
+    client_secret = data.get('client_secret', '').strip()
+
+    if not client_id or not client_secret:
+        return jsonify({'error': 'Both Client ID and Client Secret are required'}), 400
+
+    # Don't save if the secret is masked (unchanged)
+    if '*' in client_secret:
+        # User didn't change the secret, only update client_id
+        config = get_config()
+        client_secret = config['google'].get('client_secret', '')
+
+    credentials_path = PROJECT_ROOT / 'credentials.py'
+
+    try:
+        # Read existing content or use template
+        if credentials_path.exists():
+            content = credentials_path.read_text()
+        else:
+            content = '''# credentials.py - Google API Credentials
+# This file is auto-generated and should not be committed to git
+
+GOOGLE_CLIENT_ID = ""
+GOOGLE_CLIENT_SECRET = ""
+
+# Encryption key for storing OAuth tokens securely
+# Leave empty to auto-generate one (recommended for first-time setup)
+ENCRYPTION_KEY = ""
+
+# Flask session secret (leave empty to auto-generate)
+SESSION_SECRET = ""
+'''
+
+        # Update GOOGLE_CLIENT_ID
+        import re
+        content = re.sub(
+            r'GOOGLE_CLIENT_ID\s*=\s*["\'].*?["\']',
+            f'GOOGLE_CLIENT_ID = "{client_id}"',
+            content
+        )
+
+        # Update GOOGLE_CLIENT_SECRET
+        content = re.sub(
+            r'GOOGLE_CLIENT_SECRET\s*=\s*["\'].*?["\']',
+            f'GOOGLE_CLIENT_SECRET = "{client_secret}"',
+            content
+        )
+
+        # Write back
+        credentials_path.write_text(content)
+
+        # Reload credentials module to pick up changes
+        reload_credentials()
+
+        logger.info("Google API credentials saved successfully")
+        return jsonify({'success': True, 'message': 'Credentials saved successfully'})
+
+    except Exception as e:
+        logger.error(f"Failed to save credentials: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/credentials', methods=['DELETE'])
+def api_clear_credentials():
+    """Clear Google API credentials from credentials.py file."""
+    credentials_path = PROJECT_ROOT / 'credentials.py'
+
+    try:
+        if credentials_path.exists():
+            content = credentials_path.read_text()
+
+            import re
+            # Clear GOOGLE_CLIENT_ID
+            content = re.sub(
+                r'GOOGLE_CLIENT_ID\s*=\s*["\'].*?["\']',
+                'GOOGLE_CLIENT_ID = ""',
+                content
+            )
+
+            # Clear GOOGLE_CLIENT_SECRET
+            content = re.sub(
+                r'GOOGLE_CLIENT_SECRET\s*=\s*["\'].*?["\']',
+                'GOOGLE_CLIENT_SECRET = ""',
+                content
+            )
+
+            credentials_path.write_text(content)
+
+            # Reload credentials module
+            reload_credentials()
+
+        logger.info("Google API credentials cleared")
+        return jsonify({'success': True, 'message': 'Credentials cleared successfully'})
+
+    except Exception as e:
+        logger.error(f"Failed to clear credentials: {e}")
         return jsonify({'error': str(e)}), 500
 
 
