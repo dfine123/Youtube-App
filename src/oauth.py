@@ -34,7 +34,7 @@ class OAuthManager:
         if not self.client_id or not self.client_secret:
             raise ValueError(
                 "Google OAuth credentials not configured. "
-                "Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in .env file."
+                "Add GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET to credentials.py"
             )
 
     def get_client_config(self) -> Dict[str, Any]:

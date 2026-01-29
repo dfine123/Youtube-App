@@ -6,13 +6,9 @@ import yaml
 from pathlib import Path
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any
-from dotenv import load_dotenv
 from cryptography.fernet import Fernet
 from rich.console import Console
 from rich.logging import RichHandler
-
-# Load environment variables
-load_dotenv()
 
 # Rich console for fancy output
 console = Console()
@@ -20,36 +16,111 @@ console = Console()
 # Project root directory
 PROJECT_ROOT = Path(__file__).parent.parent
 
+# Cache for auto-generated encryption key
+_cached_encryption_key = None
+
+
+def _get_credentials():
+    """Import credentials from credentials.py file."""
+    try:
+        import credentials
+        return credentials
+    except ImportError:
+        # Return empty module-like object if credentials.py doesn't exist
+        class EmptyCredentials:
+            GOOGLE_CLIENT_ID = ""
+            GOOGLE_CLIENT_SECRET = ""
+            ENCRYPTION_KEY = ""
+            SESSION_SECRET = ""
+        return EmptyCredentials()
+
+
+def reload_credentials():
+    """
+    Reload the credentials module to pick up any changes.
+    Call this after saving new credentials via the web UI.
+    """
+    import importlib
+    import sys
+
+    if 'credentials' in sys.modules:
+        importlib.reload(sys.modules['credentials'])
+        console.print("[green]Credentials module reloaded[/green]")
+
 
 def get_config() -> Dict[str, Any]:
-    """Load configuration from config.yaml and environment variables."""
+    """Load configuration from config.yaml and credentials.py."""
     config_path = PROJECT_ROOT / "config.yaml"
 
     with open(config_path, 'r') as f:
         config = yaml.safe_load(f)
 
-    # Override with environment variables if present
-    if os.getenv('GOOGLE_CLIENT_ID'):
-        config['google']['client_id'] = os.getenv('GOOGLE_CLIENT_ID')
-    if os.getenv('GOOGLE_CLIENT_SECRET'):
-        config['google']['client_secret'] = os.getenv('GOOGLE_CLIENT_SECRET')
-    if os.getenv('DEFAULT_PRIVACY_STATUS'):
-        config['defaults']['privacy_status'] = os.getenv('DEFAULT_PRIVACY_STATUS')
-    if os.getenv('DEFAULT_POSTS_PER_DAY'):
-        config['defaults']['posts_per_day'] = int(os.getenv('DEFAULT_POSTS_PER_DAY'))
+    # Load credentials
+    creds = _get_credentials()
+
+    # Override with credentials.py values if present
+    if getattr(creds, 'GOOGLE_CLIENT_ID', ''):
+        config['google']['client_id'] = creds.GOOGLE_CLIENT_ID
+    if getattr(creds, 'GOOGLE_CLIENT_SECRET', ''):
+        config['google']['client_secret'] = creds.GOOGLE_CLIENT_SECRET
 
     return config
 
 
 def get_encryption_key() -> bytes:
-    """Get the encryption key from environment variables."""
-    key = os.getenv('ENCRYPTION_KEY')
-    if not key:
-        raise ValueError(
-            "ENCRYPTION_KEY not found in environment variables. "
-            "Generate one with: python -c \"from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())\""
-        )
-    return key.encode()
+    """
+    Get the encryption key from credentials.py.
+    Auto-generates and saves one if not set.
+    """
+    global _cached_encryption_key
+
+    # Return cached key if available
+    if _cached_encryption_key:
+        return _cached_encryption_key
+
+    creds = _get_credentials()
+    key = getattr(creds, 'ENCRYPTION_KEY', '')
+
+    if key:
+        _cached_encryption_key = key.encode()
+        return _cached_encryption_key
+
+    # Auto-generate encryption key
+    new_key = Fernet.generate_key().decode()
+    _cached_encryption_key = new_key.encode()
+
+    # Try to save it to credentials.py for persistence
+    credentials_path = PROJECT_ROOT / "credentials.py"
+    if credentials_path.exists():
+        try:
+            content = credentials_path.read_text()
+            # Update the ENCRYPTION_KEY line
+            import re
+            new_content = re.sub(
+                r'ENCRYPTION_KEY\s*=\s*["\'].*["\']',
+                f'ENCRYPTION_KEY = "{new_key}"',
+                content
+            )
+            if new_content != content:
+                credentials_path.write_text(new_content)
+                console.print(f"[green]Auto-generated ENCRYPTION_KEY and saved to credentials.py[/green]")
+        except Exception as e:
+            console.print(f"[yellow]Warning: Could not save auto-generated encryption key: {e}[/yellow]")
+            console.print(f"[yellow]Add this to credentials.py: ENCRYPTION_KEY = \"{new_key}\"[/yellow]")
+
+    return _cached_encryption_key
+
+
+def get_session_secret() -> str:
+    """Get Flask session secret from credentials.py or generate one."""
+    creds = _get_credentials()
+    secret = getattr(creds, 'SESSION_SECRET', '')
+
+    if secret:
+        return secret
+
+    # Generate a random session secret
+    return os.urandom(24).hex()
 
 
 def encrypt_token(token: str) -> bytes:
